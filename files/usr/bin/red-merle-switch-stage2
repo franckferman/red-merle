@@ -1,0 +1,79 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+. /lib/functions/gl_util.sh
+
+rm -f /tmp/red-merle-stage1
+
+mcu_send_message "== RED-MERLE ==\n[>] SIM SWAP\n    Stage 2/2"
+sleep 1
+sim_switch on
+
+leak=0
+
+until gl_modem AT AT+CFUN=0 | grep -q OK
+do
+	mcu_send_message "[!] Modem reset\n    failed.\n    Retrying..."
+	sleep 1
+done
+
+until gl_modem AT AT+CFUN=4 | grep -q OK
+do
+	leak=1
+	mcu_send_message "[!] RF disable\n    failed.\n    Retrying..."
+	sleep 1
+done
+
+if [[ $leak -eq 1 ]]; then
+	mcu_send_message "[!] WARNING\nReset took longer\nthan expected."
+	sleep 3
+fi
+
+sleep 1
+
+new_imsi=$(READ_IMSI)
+
+if [[ "$old_imsi" == "$new_imsi" ]]; then
+	mcu_send_message "[!] WARNING\nOld IMSI = New\nDid you swap\nthe SIM card?"
+	sleep 3
+fi
+old_imei=$(READ_IMEI)
+mcu_send_message "[>] Generating\n    new IMEI..."
+timeout 15 python3 /lib/red-merle/imei_generate.py -r
+
+new_imei=$(READ_IMEI)
+
+if [[ "$old_imei" == "$new_imei" ]]; then
+	mcu_send_message "[!] WARNING\nIMEI unchanged!\nOld = New"
+	sleep 3
+else
+	mcu_send_message "[OK] IMEI changed\nOld: ${old_imei:0:15}\nNew: ${new_imei:0:15}"
+	sleep 5
+	mkdir -p /tmp/modem.1-1.2
+	echo "$new_imei" > /tmp/modem.1-1.2/modem-imei
+	echo "$new_imei" > /root/esim/imei
+	shred -u /root/esim/log.txt 2>/dev/null
+fi
+
+mcu_send_message "[>] Securing...\n    Wiping logs\n    Disabling GPS\n    Flushing DNS"
+sleep 1
+
+WIPE_LOGS
+DISABLE_CARRIER_GPS
+FLUSH_DNS
+
+mcu_send_message "[OK] All clean\n\nShutting down..."
+sleep 2
+mcu_send_message ">> CHANGE YOUR <<\n>> LOCATION    <<\n>> BEFORE BOOT <<"
+sleep 5
+
+i=5
+until  [[ $i -eq 0 ]]
+do
+        i=$((i-1))
+        mcu_send_message "Shutdown in ${i}..."
+        sleep 1
+done
+
+# Note: calling /sbin/poweroff directly results in the device rebooting into a broken state
+echo '{ "poweroff": "1" }' >/dev/ttyS0

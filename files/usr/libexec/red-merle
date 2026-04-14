@@ -1,0 +1,51 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+
+
+show_message() {
+    echo "{\"msg\": \"$1\"}" > /dev/ttyS0
+}
+
+
+if [ "$1" == "read-imei" ]; then
+    imei="$(READ_IMEI)"
+    echo -n  $imei
+    show_message "== RED-MERLE ==\nIMEI:\n${imei}"
+
+elif [ "$1" == "read-imsi" ]; then
+    imsi="$(READ_IMSI)"
+    if [ "x$imsi" == "x" ]; then
+        echo "No IMSI found $imsi" >&2
+        exit 1
+    else
+        echo -n  $imsi
+        show_message "== RED-MERLE ==\nIMSI:\n${imsi}"
+    fi
+
+elif [ "$1" == "random-imei" ]; then
+    show_message "[>] Generating\n    new IMEI..."
+    flock -n /tmp/red-merle-imei-generate.lock  timeout 15  /lib/red-merle/imei_generate.py --random
+    new_imei=$(READ_IMEI)
+    echo -n $new_imei
+    show_message "[OK] IMEI set\n${new_imei}"
+
+elif [ "$1" == "shutdown-modem" ]; then
+    show_message "[>] Disabling RF\n    radio..."
+    exec gl_modem AT AT+CFUN=4
+
+elif [ "$1" == "shutdown" ]; then
+    show_message "== RED-MERLE ==\n[>] Securing...\n    Wiping logs"
+    WIPE_LOGS
+    DISABLE_CARRIER_GPS
+    FLUSH_DNS
+    show_message "[OK] All clean\nShutting down..."
+    sleep 1
+    echo '{ "poweroff": "1" }' > /dev/ttyS0
+
+elif [ "$1" == "write-imei" ]; then
+    new_imei=$2
+    echo -n  { "action": "write" }
+else
+    echo 0
+fi

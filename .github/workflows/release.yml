@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  owrt-package: red-merle
+  SDK_URL: "https://downloads.openwrt.org/releases/23.05.0/targets/ath79/nand/openwrt-sdk-23.05.0-ath79-nand_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+  SDK_FILENAME: "openwrt-sdk-23.05.0-ath79-nand_gcc-12.3.0_musl.Linux-x86_64.tar.xz"
+  OWRT_PKG_BASE: "https://downloads.openwrt.org/releases/23.05.0/packages/mips_24kc"
+
+jobs:
+  release:
+    name: Build & Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get the SDK
+        run: |
+          mkdir sdk
+          cd sdk
+          wget -q "${SDK_URL}"
+          tar xf "${SDK_FILENAME}"
+
+      - name: Set up package dir
+        run: |
+          cd "sdk/${SDK_FILENAME%.tar.xz}"
+          mkdir package/${{ env.owrt-package }}
+          ln -s "${GITHUB_WORKSPACE}"/Makefile package/${{ env.owrt-package }}/
+          ln -s "${GITHUB_WORKSPACE}"/files package/${{ env.owrt-package }}/
+
+      - name: Update packages feed
+        run: |
+          cd "sdk/${SDK_FILENAME%.tar.xz}"
+          scripts/feeds update packages >/dev/null
+
+      - name: Set up OpenWrt config
+        run: |
+          cd "sdk/${SDK_FILENAME%.tar.xz}"
+          echo "CONFIG_SIGNED_PACKAGES=n" > .config
+          make defconfig
+
+      - name: Build package
+        run: |
+          cd "sdk/${SDK_FILENAME%.tar.xz}"
+          make -j$(nproc) V=s package/${{ env.owrt-package }}/compile
+          make -j1 V=s package/index
+
+      - name: Locate .ipk
+        id: ipk
+        run: |
+          IPK_PATH=$(find sdk/ -name "${{ env.owrt-package }}*.ipk" -not -path "*/Packages*" | head -1)
+          IPK_NAME=$(basename "$IPK_PATH")
+          echo "path=$IPK_PATH" >> $GITHUB_OUTPUT
+          echo "name=$IPK_NAME" >> $GITHUB_OUTPUT
+          echo "Found: $IPK_NAME"
+
+      - name: Build offline install package
+        run: |
+          OFFLINE_DIR="${{ env.owrt-package }}_offline_install"
+          mkdir -p "$OFFLINE_DIR"
+
+          # Copy the red-merle .ipk
+          cp "${{ steps.ipk.outputs.path }}" "$OFFLINE_DIR/"
+
+          # Download all dependencies (resolved from opkg dependency tree)
+          # From packages feed
+          for pkg in \
+            coreutils_9.3-1_mips_24kc.ipk \
+            coreutils-shred_9.3-1_mips_24kc.ipk \
+            libffi_3.4.2-2_mips_24kc.ipk \
+            libpython3-3.11_3.11.7-1_mips_24kc.ipk \
+            python3-base_3.11.7-1_mips_24kc.ipk \
+            python3-email_3.11.7-1_mips_24kc.ipk \
+            python3-light_3.11.7-1_mips_24kc.ipk \
+            python3-logging_3.11.7-1_mips_24kc.ipk \
+            python3-pyserial_3.5-1_mips_24kc.ipk \
+            python3-urllib_3.11.7-1_mips_24kc.ipk; do
+            wget -q -P "$OFFLINE_DIR" "${{ env.OWRT_PKG_BASE }}/packages/${pkg}"
+          done
+
+          # From base feed
+          for pkg in \
+            libbz2-1.0_1.0.8-1_mips_24kc.ipk; do
+            wget -q -P "$OFFLINE_DIR" "${{ env.OWRT_PKG_BASE }}/base/${pkg}"
+          done
+
+          echo "Downloaded dependencies:"
+          ls -la "$OFFLINE_DIR"/*.ipk
+
+          # Create install.sh
+          IPK_NAME="${{ steps.ipk.outputs.name }}"
+          cat > "$OFFLINE_DIR/install.sh" << 'SCRIPT'
+          #!/bin/ash
+          # red-merle offline installer
+          set -e
+          cd "$(dirname "$0")"
+
+          echo "Installing dependencies..."
+          for dep in \
+            coreutils_*.ipk \
+            coreutils-shred_*.ipk \
+            libbz2-1.0_*.ipk \
+            libffi_*.ipk \
+            libpython3-*.ipk \
+            python3-base_*.ipk \
+            python3-light_*.ipk \
+            python3-logging_*.ipk \
+            python3-email_*.ipk \
+            python3-urllib_*.ipk \
+            python3-pyserial_*.ipk; do
+            [ -f $dep ] && opkg install "./$dep" 2>/dev/null || true
+          done
+
+          echo "Installing red-merle..."
+          opkg install ./red-merle_*.ipk
+
+          echo "Done. Run 'red-merle' to get started."
+          SCRIPT
+          chmod +x "$OFFLINE_DIR/install.sh"
+
+          # Create the zip
+          zip -r "${OFFLINE_DIR}.zip" "$OFFLINE_DIR/"
+          echo "Offline package: $(du -h ${OFFLINE_DIR}.zip | cut -f1)"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ steps.ipk.outputs.path }}
+            ${{ env.owrt-package }}_offline_install.zip
