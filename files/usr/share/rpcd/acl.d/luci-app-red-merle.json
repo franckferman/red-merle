@@ -1,0 +1,26 @@
+{
+	"luci-app-red-merle": {
+		"description": "Grant access to opkg management",
+		"read": {
+			"cgi-io": [ "exec" ],
+			"file": {
+				"/usr/libexec/red-merle": [ "exec" ],
+				"/usr/libexec/red-merle shred": [ "exec" ],
+				"/usr/libexec/red-merle *": [ "exec" ],
+				"/etc/opkg.conf": [ "read" ],
+				"/etc/opkg/*.conf": [ "read" ]
+			},
+			"ubus": {
+				"luci": [ "getMountPoints" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/libexec/red-merle": [ "exec" ],
+				"/usr/libexec/red-merle shred": [ "exec" ],
+				"/usr/libexec/red-merle *": [ "exec" ],
+				"/tmp/upload.ipk": [ "write" ]
+			}
+		}
+	}
+}
