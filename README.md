@@ -96,7 +96,16 @@ Hardened red-merle user:
 
 **The choice between modes cannot be solved universally**. It requires personal risk assessment based on your specific context, adversaries, and acceptable trade-offs.
 
-**Core question**: *Do I gain MORE from maximum protection (accepting detectability) or from remaining indistinguishable (accepting partial vulnerability)?*
+**Core question**: *Do I gain MORE from protecting against specific documented attack vectors (accepting detectability) or from remaining indistinguishable in the population (accepting vulnerability to those vectors)?*
+
+**Critical clarification**: "Maximum protection" does NOT mean comprehensive security. Hardening mode only blocks a specific set of known carrier-level tracking methods. It does not protect against:
+- Zero-day exploits in modem firmware
+- Advanced persistent threats with unknown capabilities  
+- Sophisticated correlation attacks using other data sources
+- Physical surveillance or device compromise
+- Social engineering or operational security failures
+
+The question is really: *"Are the specific GPS/SUPL/IMS protections worth the increased detectability risk in MY situation?"*
 
 #### Stealth mode considerations
 
@@ -125,13 +134,22 @@ Hardened red-merle user:
 - Physical safety outweighs operational security concerns
 
 **Hardening mode trade-offs**:
-- ✅ **Maximum protection** against known attack vectors
-- ✅ **Blocks collection** at the modem level
-- ✅ **Resistance** to downgrade and positioning attacks
+- ✅ **Specific vector protection** - blocks GPS/SUPL/IMS/OMA-DM tracking
+- ✅ **Documented attack resistance** - prevents known carrier positioning methods
+- ✅ **IMSI catcher mitigation** - 4G-only enforcement
+- ⚠️ **Limited scope** - only protects against documented, AT-command-controllable vectors
 - ❌ **Highly detectable** signature ("privacy-conscious user")
-- ❌ **Population correlation** - linkable with other red-merle users
+- ❌ **Population correlation** - linkable with other red-merle users  
 - ❌ **Attention escalation** - may trigger enhanced surveillance
-- ❌ **Current scale limitation** - small user base makes detection easier
+- ❌ **False security** - may feel more protected than you actually are
+
+**What hardening does NOT protect against**:
+- Modem firmware vulnerabilities or backdoors
+- Zero-day exploits in baseband processors
+- Advanced correlation using cell tower timing/patterns
+- Side-channel attacks through power consumption or RF signatures
+- Social engineering, physical surveillance, or device seizure
+- Unknown positioning methods not controllable via AT commands
 
 #### The personal calculation
 
@@ -232,8 +250,41 @@ Rather than asking *"Which mode is better?"*, ask:
 3. **What are their likely capabilities?** (Bulk analysis vs individual targeting vs advanced techniques)
 4. **What happens if I'm detected?** (Inconvenience vs investigation vs physical danger)
 5. **What other protections do I have?** (VPN, Tor, burner devices, operational security)
+6. **How sophisticated are my likely adversaries?** (Automated systems vs dedicated analysts vs nation-states)
+7. **Am I worth the cost of advanced techniques?** (Mass target vs high-value individual)
 
-**The decision is ultimately about risk tolerance, not technical optimization.**
+#### The sophistication spectrum
+
+**Different adversaries have different capabilities and cost thresholds**:
+
+**Mass surveillance systems** (low cost per target):
+- Automated carrier analytics and bulk data collection
+- Pattern matching against known privacy tool signatures
+- **Hardening blocks**: Standard GPS/SUPL requests
+- **Hardening doesn't block**: Advanced correlation, unknown collection methods
+
+**Dedicated human analysts** (medium cost per target):
+- Individual behavioral analysis and correlation
+- Time-intensive investigation of specific targets  
+- **Hardening blocks**: Quick technical collection methods
+- **Hardening doesn't block**: Patient correlation analysis, alternative data sources
+
+**Advanced persistent threats** (high cost per target):
+- Zero-day exploits, custom malware, physical operations
+- Sophisticated techniques not in public documentation
+- **Hardening blocks**: Basic documented collection vectors
+- **Hardening doesn't block**: Custom exploits, advanced persistent access
+
+#### Realistic threat assessment
+
+**Ask yourself honestly**:
+- *"Am I interesting enough for them to deploy expensive, sophisticated techniques?"*
+- *"Or will they move on to easier targets if basic collection fails?"*
+- *"Does blocking GPS/SUPL actually matter if they can correlate my location through cell tower timing?"*
+
+**Reality check**: If you're facing adversaries with access to zero-days and custom exploits, the choice between stealth and hardening mode is probably irrelevant. Your threat model needs to include operational security, physical security, and potentially avoiding digital devices entirely.
+
+**The decision is ultimately about risk tolerance and realistic threat assessment, not technical optimization.**
 
 ### Practical guidance
 
