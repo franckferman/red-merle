@@ -96,7 +96,7 @@ Hardened red-merle user:
 
 **The choice between modes cannot be solved universally**. It requires personal risk assessment based on your specific context, adversaries, and acceptable trade-offs.
 
-**Core question**: *Do I gain MORE from protecting against specific documented attack vectors (accepting detectability) or from remaining indistinguishable in the population (accepting vulnerability to those vectors)?*
+**Core question**: *Do I gain MORE from protecting against specific documented attack vectors (accepting detectability) or from temporarily blending with normal users (buying time before pattern recognition)?*
 
 **Critical clarification**: "Maximum protection" does NOT mean comprehensive security. Hardening mode only blocks a specific set of known carrier-level tracking methods. It does not protect against:
 - Zero-day exploits in modem firmware
@@ -117,12 +117,13 @@ The question is really: *"Are the specific GPS/SUPL/IMS protections worth the in
 - You're not currently under active investigation
 
 **Stealth mode trade-offs**:
-- ✅ **Invisible** to carrier behavioral analysis
-- ✅ **Blends** with normal user population (millions of similar profiles)
-- ✅ **No escalation** of surveillance attention
-- ❌ **Partial protection** - sophisticated adversaries can still collect data
-- ❌ **Time vulnerability** - advanced techniques may identify you eventually
-- ❌ **False security** - you may underestimate collection happening
+- ✅ **Invisible** to carrier behavioral analysis (initially)
+- ✅ **Buys time** by blending with millions of similar profiles
+- ✅ **No immediate escalation** of surveillance attention
+- ❌ **Temporary protection** - pattern recognition will eventually identify you
+- ❌ **Human behavioral patterns** - timing, locations, usage create unique signatures
+- ❌ **False security** - "indistinguishable" is temporary, not permanent
+- ❌ **Sophisticated correlation** - enough data points will reveal patterns regardless of mode
 
 #### Hardening mode considerations
 
@@ -282,9 +283,33 @@ Rather than asking *"Which mode is better?"*, ask:
 - *"Or will they move on to easier targets if basic collection fails?"*
 - *"Does blocking GPS/SUPL actually matter if they can correlate my location through cell tower timing?"*
 
-**Reality check**: If you're facing adversaries with access to zero-days and custom exploits, the choice between stealth and hardening mode is probably irrelevant. Your threat model needs to include operational security, physical security, and potentially avoiding digital devices entirely.
+#### The human pattern problem
 
-**The decision is ultimately about risk tolerance and realistic threat assessment, not technical optimization.**
+**Fundamental truth**: You are human, and humans create patterns. No technical solution can eliminate this.
+
+**Inevitable pattern sources**:
+- **Temporal**: When you connect, how long sessions last, sleep schedules
+- **Geographic**: Where you connect from, travel routes, location clusters  
+- **Behavioral**: Data usage patterns, website visits, communication timing
+- **Operational**: How you change SIMs, timing of IMEI changes, device reboot patterns
+
+**Both stealth AND hardening modes are vulnerable** to long-term pattern analysis:
+- Stealth mode: Patterns emerge through correlation of "normal" behavior
+- Hardening mode: Patterns emerge through correlation of technical signatures + behavior
+
+**The goal is buying time, not permanent invisibility**:
+- Stealth mode: Delays detection by hiding in normal population noise
+- Hardening mode: Reduces specific data collection but creates immediate technical signature
+
+**Minimize patterns where possible**:
+- Vary timing, locations, usage patterns
+- Use operational security practices
+- Change behavior regularly
+- But accept that perfect pattern elimination is impossible
+
+**Reality check**: No matter which mode you choose, a sufficiently motivated adversary with enough time and data will eventually identify patterns that reveal your identity. Technology buys time and increases cost for attackers, but cannot solve the fundamental problem that humans have predictable behaviors.
+
+**The decision is ultimately about risk tolerance, time horizons, and realistic threat assessment - not achieving perfect anonymity.**
 
 ### Practical guidance
 
