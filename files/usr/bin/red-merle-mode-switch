@@ -1,0 +1,88 @@
+#!/bin/sh
+#
+# red-merle-mode-switch - Switch between stealth and hardening modes
+#
+
+. /lib/red-merle/functions.sh
+
+CURRENT_MODE=$(GET_HARDENING_MODE)
+
+show_status() {
+    echo "== RED-MERLE MODE STATUS =="
+    echo "Current mode: $CURRENT_MODE"
+    echo ""
+
+    case "$CURRENT_MODE" in
+        "stealth")
+            echo "STEALTH MODE (invisible to carrier):"
+            echo "  ✓ iptables blocking SUPL/OMA-DM ports"
+            echo "  ✓ MAC randomization (local only)"
+            echo "  ✓ Log wiping"
+            echo "  ✗ No AT command modifications"
+            echo ""
+            echo "Carrier sees: NORMAL profile (blend in)"
+            ;;
+        "hardening")
+            echo "HARDENING MODE (reduced attack surface):"
+            echo "  ✓ iptables blocking SUPL/OMA-DM ports"
+            echo "  ✓ MAC randomization (local only)"
+            echo "  ✓ Log wiping"
+            echo "  ✓ GPS/SUPL/IMS disabled via AT commands"
+            echo "  ✓ 4G-only enforcement"
+            echo ""
+            echo "⚠️  Carrier sees: UNIQUE profile (identifiable)"
+            ;;
+    esac
+}
+
+set_stealth_mode() {
+    echo "Setting STEALTH mode..."
+    uci set red-merle.settings.hardening_mode='stealth'
+    uci commit red-merle
+    echo "✓ Mode set to stealth"
+    echo ""
+    echo "Benefits:"
+    echo "  + Invisible to network analysis"
+    echo "  + Blends in with normal users"
+    echo "  + Blocks data collection at network level"
+    echo ""
+    echo "Limitations:"
+    echo "  - GPS/SUPL still active at modem level"
+    echo "  - IMS/VoLTE metadata still collected"
+}
+
+set_hardening_mode() {
+    echo "Setting HARDENING mode..."
+    uci set red-merle.settings.hardening_mode='hardening'
+    uci commit red-merle
+    echo "✓ Mode set to hardening"
+    echo ""
+    echo "Benefits:"
+    echo "  + Maximum attack surface reduction"
+    echo "  + GPS/SUPL/IMS fully disabled"
+    echo "  + 4G-only (no IMSI catcher downgrade)"
+    echo ""
+    echo "⚠️  WARNING:"
+    echo "  - Creates unique network signature"
+    echo "  - Identifies you as privacy-conscious user"
+    echo "  - May trigger targeted analysis"
+}
+
+case "${1:-status}" in
+    "status")
+        show_status
+        ;;
+    "stealth")
+        set_stealth_mode
+        ;;
+    "hardening"|"harden")
+        set_hardening_mode
+        ;;
+    *)
+        echo "Usage: $0 {status|stealth|hardening}"
+        echo ""
+        echo "  status     Show current mode and capabilities"
+        echo "  stealth    Set stealth mode (invisible to carrier)"
+        echo "  hardening  Set hardening mode (visible but secure)"
+        ;;
+esac

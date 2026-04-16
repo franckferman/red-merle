@@ -1,0 +1,27 @@
+#!/bin/sh /etc/rc.common
+
+. /lib/red-merle/functions.sh
+
+# We intend to be started before the first network-related service is started.
+# According to https://openwrt.org/docs/techref/initscripts, /etc/rc.d/ determines
+# the order of the services to be started (or stopped). The lower the number,
+# the earlier the service is started.
+# We observe "repeater" having the value 15. "network" 20. We certainly want to ahead of those.
+START=10
+STOP=99
+
+start() {
+	echo '{"msg":"== RED-MERLE ==\n   Securing..."}' > /dev/ttyS0
+	SETUP_IPTABLES_BLOCKING
+	WIPE_LOGS
+	RESET_BSSIDS
+	RANDOMIZE_MACADDR
+	DISABLE_CARRIER_GPS
+	echo '{"msg":"== RED-MERLE ==\n[OK] Network blocked\n[OK] Logs wiped\n[OK] MAC random\n[OK] BSSID random\n[OK] GPS hardened"}' > /dev/ttyS0
+	sleep 2
+}
+
+stop() {
+	echo '{"msg":"== RED-MERLE ==\n   Wiping logs..."}' > /dev/ttyS0
+	WIPE_LOGS
+}

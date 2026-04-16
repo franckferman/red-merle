@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>red-merle</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+@font-face{font-family:'VT323';src:url('https://fonts.googleapis.com/css2?family=VT323&display=swap')}
+:root{
+  --bg:#020202;--red:#8b0000;--red-b:#cc1100;--red-g:rgba(139,0,0,.15);
+  --green:#003300;--green-b:#00aa00;
+  --text:#444;--bright:#888;--dim:#151515;
+  --mono:'Courier New',Courier,monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);overflow-x:hidden}
+
+/* ===== PHASE 1: SURVEILLANCE SCREEN ===== */
+#surveillance{position:fixed;inset:0;z-index:1000;background:#020202;transition:opacity .8s;display:flex;flex-direction:column}
+
+.surv-header{display:flex;justify-content:space-between;padding:8px 15px;font-size:.55rem;color:#335533;
+  border-bottom:1px solid #0a1a0a;background:#030503}
+.surv-header .rec{color:#550000;animation:blink-rec 1s infinite}
+@keyframes blink-rec{50%{opacity:0}}
+.surv-ts{color:#335533}
+
+.surv-grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:1px;background:#0a0a0a;padding:1px}
+.cam-feed{background:#030503;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center}
+.cam-feed::before{content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,50,0,.06) 2px,rgba(0,50,0,.06) 4px);pointer-events:none}
+.cam-label{position:absolute;top:6px;left:8px;font-size:.5rem;color:#335533;letter-spacing:.1em}
+.cam-status{position:absolute;bottom:6px;right:8px;font-size:.45rem;letter-spacing:.1em}
+.cam-status.online{color:#335533}
+
+/* Camera content */
+.cam-data{font-size:.55rem;color:#224422;text-align:center;line-height:2;opacity:.6}
+.cam-data .val{color:#33aa33;font-size:.65rem}
+
+/* Target tracking dots */
+.track-dot{width:4px;height:4px;border-radius:50%;background:#00aa00;position:absolute;
+  box-shadow:0 0 6px rgba(0,170,0,.4);animation:dot-move 8s infinite linear}
+@keyframes dot-move{0%{transform:translate(0,0)}25%{transform:translate(30px,-20px)}
+  50%{transform:translate(-15px,25px)}75%{transform:translate(20px,10px)}100%{transform:translate(0,0)}}
+
+.surv-footer{padding:6px 15px;font-size:.5rem;color:#335533;border-top:1px solid #0a1a0a;
+  background:#030503;display:flex;justify-content:space-between}
+
+/* Glitch takeover */
+.glitch-overlay{position:fixed;inset:0;z-index:1001;pointer-events:none;opacity:0}
+.glitch-overlay.active{animation:glitch-takeover 2s forwards}
+@keyframes glitch-takeover{
+  0%{opacity:0}
+  10%{opacity:1;background:rgba(139,0,0,.1)}
+  15%{background:transparent}
+  20%{opacity:1;background:rgba(139,0,0,.15);transform:translateX(-5px)}
+  25%{transform:translateX(3px);background:rgba(139,0,0,.05)}
+  30%{transform:none;background:transparent}
+  40%{background:rgba(139,0,0,.2);transform:skewX(2deg)}
+  50%{transform:none;background:rgba(139,0,0,.1)}
+  60%{background:rgba(139,0,0,.3)}
+  70%{background:rgba(139,0,0,.5)}
+  80%{background:rgba(139,0,0,.7)}
+  90%{background:rgba(139,0,0,.9)}
+  100%{background:rgba(139,0,0,1)}
+}
+
+/* SIGNAL LOST */
+#signal-lost{position:fixed;inset:0;z-index:1002;display:none;align-items:center;justify-content:center;
+  background:var(--bg);flex-direction:column;gap:1rem}
+#signal-lost.active{display:flex;animation:fade-in .5s}
+#signal-lost h1{font-size:3rem;color:var(--red-b);letter-spacing:.3em;text-shadow:0 0 30px var(--red-g);
+  animation:signal-flicker .15s infinite}
+@keyframes signal-flicker{0%{opacity:.9}50%{opacity:1}100%{opacity:.85}}
+#signal-lost p{font-size:.6rem;color:var(--text);letter-spacing:.2em}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+
+/* ===== PHASE 2: RED-MERLE SITE ===== */
+#main-site{display:none;position:relative;z-index:1}
+#main-site.active{display:block;animation:site-emerge 1s forwards}
+@keyframes site-emerge{from{opacity:0;filter:blur(5px)}to{opacity:1;filter:none}}
+
+/* Blood border */
+#main-site::before{content:'';position:fixed;top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,var(--red),var(--red-b),var(--red),transparent);
+  z-index:200;box-shadow:0 0 20px var(--red-g)}
+
+/* VHS overlay */
+.vhs{position:fixed;inset:0;pointer-events:none;z-index:150}
+.vhs::before{content:'';position:absolute;inset:0;opacity:.015;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.3) 2px,rgba(0,0,0,.3) 4px)}
+.vhs::after{content:'';position:absolute;top:0;left:0;right:0;height:100%;
+  background:linear-gradient(transparent 50%,rgba(139,0,0,.02) 50%);background-size:100% 4px;
+  animation:vhs-scroll 8s linear infinite}
+@keyframes vhs-scroll{from{transform:translateY(0)}to{transform:translateY(4px)}}
+
+/* REC indicator */
+.rec-indicator{position:fixed;top:15px;right:20px;z-index:200;display:flex;align-items:center;gap:.4rem;
+  font-size:.55rem;letter-spacing:.15em;color:var(--red)}
+.rec-dot{width:8px;height:8px;border-radius:50%;background:var(--red-b);animation:blink-rec 1s infinite;
+  box-shadow:0 0 6px var(--red-g)}
+
+/* Timestamp */
+.timestamp{position:fixed;top:15px;left:20px;z-index:200;font-size:.5rem;color:#222;letter-spacing:.1em}
+
+/* Main content */
+.wrap{max-width:750px;margin:0 auto;padding:4rem 1.5rem 5rem;position:relative}
+
+.header{text-align:center;padding:2rem 0 3rem}
+.title{font-size:2.5rem;font-weight:900;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--red-b);text-shadow:0 0 40px var(--red-g),0 0 80px rgba(139,0,0,.08)}
+.tagline{font-size:.6rem;letter-spacing:.3em;text-transform:uppercase;color:var(--dim);margin-top:1rem}
+.tagline span{color:var(--red)}
+
+/* Quote rotator */
+.quote-box{text-align:center;padding:2rem 1rem;margin:1rem 0}
+#quote{font-size:.82rem;color:var(--bright);font-style:italic;line-height:1.8;min-height:3rem;transition:opacity .5s}
+#quote-src{font-size:.5rem;letter-spacing:.15em;color:var(--dim);margin-top:.6rem;text-transform:uppercase}
+
+/* Manifesto */
+.manifesto{text-align:center;font-size:.62rem;letter-spacing:.1em;color:var(--text);line-height:2.2;margin:1rem 0}
+.manifesto em{color:var(--red-b);font-style:normal}
+
+/* Sections */
+.section{margin:3rem 0;opacity:0;transform:translateY(20px);transition:all .6s}
+.section.visible{opacity:1;transform:none}
+.section-id{font-size:.5rem;letter-spacing:.3em;color:var(--red);margin-bottom:.3rem;font-weight:900}
+.section h2{font-size:.8rem;color:var(--bright);letter-spacing:.1em;margin-bottom:1rem;
+  padding-bottom:.5rem;border-bottom:1px solid var(--dim)}
+
+/* Typing terminal */
+.term{background:#050505;border:1px solid #111;margin:1rem 0;overflow:hidden}
+.term-bar{background:#080808;padding:.3rem .8rem;display:flex;justify-content:space-between;
+  border-bottom:1px solid #111;font-size:.5rem;color:#222}
+.term-bar .live-dot{color:var(--red);animation:blink-rec 1.5s infinite}
+.term-body{padding:1rem;font-size:.72rem;line-height:1.8;overflow-x:auto;min-height:200px;white-space:pre-wrap}
+.type-line{overflow:hidden;white-space:nowrap;border-right:2px solid var(--red);width:0}
+.type-line.done{border-right:none;width:100%}
+.p{color:var(--red)}.c{color:var(--bright)}.f{color:#553300}.o{color:#333}.ok{color:#443300}.w{color:var(--red-b)}
+
+/* Redacted */
+.redacted{position:relative;cursor:pointer;padding:0 .2rem}
+.redacted::before{content:'';position:absolute;inset:-1px;background:var(--text);transition:all .4s}
+.redacted:hover::before{background:transparent;box-shadow:0 0 10px var(--red-g)}
+.redacted span{position:relative;z-index:1;color:transparent;transition:color .4s}
+.redacted:hover span{color:var(--red-b)}
+
+/* Threats */
+.threats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:#111;margin:1rem 0}
+.threat{background:#080808;padding:1rem;position:relative;overflow:hidden}
+.threat::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:var(--red);transform:translateY(-100%);animation:threat-scan 4s infinite}
+@keyframes threat-scan{0%{transform:translateY(-1px)}100%{transform:translateY(calc(100% + 100px))}}
+.threat h3{font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;color:var(--red);margin-bottom:.4rem}
+.threat p{font-size:.62rem;color:#333;line-height:1.6}
+
+/* Evidence table */
+.ev{width:100%;border-collapse:collapse;font-size:.68rem;margin:1rem 0}
+.ev th{text-align:left;padding:.4rem .5rem;font-size:.5rem;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--red);border-bottom:1px solid var(--red)}
+.ev td{padding:.35rem .5rem;border-bottom:1px solid #111}
+.ev tr{transition:background .2s}.ev tr:hover td{background:var(--red-g)}
+
+/* Intercept card */
+.intercept{background:#080808;border:1px solid #111;padding:1.2rem;margin:1rem 0;position:relative}
+.intercept::before{content:'INTERCEPTED';position:absolute;top:8px;right:10px;
+  font-size:.4rem;letter-spacing:.2em;color:rgba(139,0,0,.15);font-weight:900}
+.intercept p{font-size:.75rem;line-height:1.7}
+.lineage p{font-size:.72rem;text-align:center}
+.mobile-br{display:none}
+
+/* Links */
+.links{display:flex;gap:.6rem;flex-wrap:wrap;margin-top:2.5rem;justify-content:center}
+.lnk{font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;color:#222;
+  text-decoration:none;border:1px solid #151515;padding:.4rem 1.2rem;transition:all .3s}
+.lnk:hover{color:var(--red);border-color:var(--red);box-shadow:0 0 15px var(--red-g)}
+
+/* Footer */
+.footer{text-align:center;margin-top:3rem;padding:1.5rem 0}
+.footer p{font-size:.5rem;color:#1a1a1a;line-height:2;letter-spacing:.05em}
+.footer a{color:#1a1a1a;text-decoration:none}
+
+/* Ticker */
+.ticker{position:fixed;bottom:0;left:0;right:0;height:22px;background:rgba(2,2,2,.97);
+  border-top:1px solid #111;z-index:200;overflow:hidden}
+.ticker-text{display:inline-block;white-space:nowrap;font-size:.5rem;letter-spacing:.08em;
+  color:var(--red);line-height:22px;animation:ticker 50s linear infinite;padding-left:100%}
+@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* Matrix rain canvas */
+#matrix-rain{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.06}
+
+/* Floating reference fragments */
+.ghost-ref{position:fixed;pointer-events:none;z-index:100;font-size:.5rem;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--red);opacity:0;transition:opacity 3s;white-space:nowrap}
+.ghost-ref.visible{opacity:.12}
+.ghost-ref .ghost-icon{font-size:1.2rem;display:block;text-align:center;margin-bottom:.2rem;
+  filter:blur(.3px);opacity:.7}
+
+/* Audio toggle */
+.audio-btn{position:fixed;bottom:30px;right:20px;z-index:250;
+  background:rgba(2,2,2,.9);border:1px solid #1a1a1a;color:#222;font-family:var(--mono);
+  font-size:.5rem;letter-spacing:.15em;text-transform:uppercase;padding:.4rem 1rem;
+  cursor:pointer;transition:all .3s;-webkit-tap-highlight-color:transparent}
+.audio-btn:hover,.audio-btn.on{color:var(--red);border-color:var(--red)}
+
+@media(max-width:768px){
+  .surv-grid{grid-template-columns:1fr;grid-template-rows:repeat(2,1fr)}
+  .cam-feed:nth-child(3),.cam-feed:nth-child(4){display:none}
+  .surv-header,.surv-footer{font-size:.45rem;padding:6px 10px}
+  .threats{grid-template-columns:1fr}
+  .title{font-size:1.6rem;letter-spacing:.1em}
+  .wrap{padding:3rem 1rem 4rem}
+  .term-body{font-size:.62rem;padding:.8rem}
+  .quote-box{padding:1rem .5rem}
+  #quote{font-size:.72rem}
+  .manifesto{font-size:.55rem}
+  .ev{font-size:.6rem}
+  .ev th,.ev td{padding:.3rem .4rem}
+  .intercept p{font-size:.68rem}
+  .lineage p{font-size:.62rem}
+  .mobile-br{display:inline}
+  .ticker{height:18px}.ticker-text{font-size:.42rem;line-height:18px}
+  .rec-indicator{top:10px;right:10px;font-size:.45rem}
+  .timestamp{top:10px;left:10px;font-size:.42rem}
+  .audio-btn{bottom:calc(24px + env(safe-area-inset-bottom,0px));right:10px;padding:.5rem 1rem;font-size:.55rem}
+  .ghost-ref{font-size:.4rem}
+  .ghost-ref .ghost-icon{font-size:.9rem}
+  #matrix-rain{opacity:.03}
+  #signal-lost h1{font-size:1.8rem;letter-spacing:.15em}
+  .section-id{font-size:.45rem}
+  .section h2{font-size:.72rem}
+  .lnk{font-size:.5rem;padding:.3rem .8rem}
+}
+@media(max-width:400px){
+  .title{font-size:1.2rem}
+  .tagline{font-size:.5rem;letter-spacing:.15em}
+  .cam-data{font-size:.45rem}
+  .cam-label{font-size:.4rem}
+  .threat h3{font-size:.48rem}
+  .threat p{font-size:.55rem}
+  .ticker{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== PHASE 1: SURVEILLANCE ===== -->
+<div id="surveillance">
+  <div class="surv-header">
+    <span>SIGINT MONITORING STATION // SITE 7-ALPHA</span>
+    <span class="rec">&#9679; REC</span>
+    <span class="surv-ts" id="surv-clock"></span>
+  </div>
+  <div class="surv-grid">
+    <div class="cam-feed">
+      <div class="cam-label">CAM-01 // CELL TOWER 0x1A3F</div>
+      <div class="cam-data">IMEI TRACKING<br><span class="val">35674108372408</span><br>CARRIER: REGISTERED<br>STATUS: LOCATED</div>
+      <div class="track-dot" style="top:30%;left:40%"></div>
+      <div class="track-dot" style="top:60%;left:65%;animation-delay:-3s"></div>
+      <div class="track-dot" style="top:45%;left:25%;animation-delay:-5s"></div>
+      <div class="cam-status online">&#9679; TRACKING</div>
+    </div>
+    <div class="cam-feed">
+      <div class="cam-label">CAM-02 // WIFI PROBE CAPTURE</div>
+      <div class="cam-data">BSSID GEOLOCATION<br><span class="val">94:83:C4:A1:B2:C3</span><br>WIGLE DB: MATCH<br>LAT: 48.8566 LON: 2.3522</div>
+      <div class="track-dot" style="top:55%;left:50%;animation-delay:-2s"></div>
+      <div class="cam-status online">&#9679; LOGGING</div>
+    </div>
+    <div class="cam-feed">
+      <div class="cam-label">CAM-03 // UPSTREAM AP</div>
+      <div class="cam-data">MAC CORRELATION<br><span class="val">94:83:C4:XX:XX:XX</span><br>SESSIONS: 47<br>LOCATIONS: 12</div>
+      <div class="track-dot" style="top:35%;left:55%;animation-delay:-4s"></div>
+      <div class="cam-status online">&#9679; CORRELATING</div>
+    </div>
+    <div class="cam-feed">
+      <div class="cam-label">CAM-04 // CLIENT ENUMERATION</div>
+      <div class="cam-data">DEVICE INVENTORY<br><span class="val">42 DEVICES LOGGED</span><br>FLASH: /etc/oui-tertf<br>FORENSIC: READY</div>
+      <div class="cam-status online">&#9679; RECORDING</div>
+    </div>
+  </div>
+  <div class="surv-footer">
+    <span>DATA RETENTION ACTIVE // ALL IDENTIFIERS STORED</span>
+    <span>SUBJECTS: IDENTIFIABLE</span>
+  </div>
+</div>
+
+<div class="glitch-overlay" id="glitch"></div>
+
+<div id="signal-lost">
+  <h1>SIGNAL LOST</h1>
+  <p>ALL IDENTIFIERS ERASED</p>
+</div>
+
+<!-- ===== PHASE 2: RED-MERLE ===== -->
+<div id="main-site">
+  <canvas id="matrix-rain"></canvas>
+  <div class="vhs"></div>
+  <div class="rec-indicator"><span class="rec-dot"></span>REC</div>
+  <div class="timestamp" id="timestamp"></div>
+  <button class="audio-btn" id="audio-btn" onclick="toggleAudio()">&#9835; audio off</button>
+
+  <!-- Ghost references (spawned dynamically) -->
+  <div id="ghost-container"></div>
+
+  <div class="ticker">
+    <div class="ticker-text">
+      MASS SURVEILLANCE IS NOT SECURITY // 5.3 BILLION CELLPHONE RECORDS COLLECTED DAILY // DATA RETENTION: THEY STRUCK DOWN THE LAW BUT KEPT THE INFRASTRUCTURE // STINGRAY IMSI CATCHERS IN 27 US STATES // 802 MILLION WIFI NETWORKS IN WIGLE DB // THEY CALL IT METADATA. WE CALL IT YOUR LIFE. // PRIVACY IS NOT NEGOTIABLE //
+      MASS SURVEILLANCE IS NOT SECURITY // 5.3 BILLION CELLPHONE RECORDS COLLECTED DAILY // DATA RETENTION: THEY STRUCK DOWN THE LAW BUT KEPT THE INFRASTRUCTURE // STINGRAY IMSI CATCHERS IN 27 US STATES // 802 MILLION WIFI NETWORKS IN WIGLE DB // THEY CALL IT METADATA. WE CALL IT YOUR LIFE. // PRIVACY IS NOT NEGOTIABLE //
+    </div>
+  </div>
+
+  <div class="wrap">
+
+    <div class="header">
+      <div class="title">red-merle</div>
+      <div class="tagline">cellular identity <span>erasure</span> // gl-e750 mudi</div>
+    </div>
+
+    <!-- Quotes -->
+    <div class="quote-box">
+      <div id="quote"></div>
+      <div id="quote-src"></div>
+    </div>
+
+    <!-- Manifesto -->
+    <div class="manifesto">
+      Every cell tower logs your IMEI. Every WiFi probe leaks your history.<br>
+      Every carrier stores your location under data retention laws.<br>
+      They call it national security. We call it mass surveillance.<br>
+      <em>Privacy is not a privilege. It is a right they chose to violate.</em>
+    </div>
+
+    <!-- Problem -->
+    <div class="section">
+      <div class="section-id">001</div>
+      <h2>The problem</h2>
+      <div class="intercept">
+        <p>Your Mudi broadcasts four unique identifiers every second. Each one is a thread.
+        Pull any thread and you unravel the user:
+        <span class="redacted"><span>IMEI</span></span> ties them to a device,
+        <span class="redacted"><span>BSSID</span></span> pins them on a map,
+        <span class="redacted"><span>MAC</span></span> links their sessions,
+        <span class="redacted"><span>client DB</span></span> inventories their contacts.</p>
+      </div>
+    </div>
+
+    <!-- Threats -->
+    <div class="section">
+      <div class="section-id">002</div>
+      <h2>Attack surface</h2>
+      <div class="threats">
+        <div class="threat"><h3>IMEI</h3><p>Hardware serial. Persists across SIM swaps. Retained by carriers. Links all identities to one device.</p></div>
+        <div class="threat"><h3>BSSID</h3><p>In every beacon frame. Indexed by WiGLE, Google, Apple. Passive collection = GPS coordinates.</p></div>
+        <div class="threat"><h3>WAN MAC</h3><p>Visible to upstream APs. Static across reboots. Correlates sessions across locations.</p></div>
+        <div class="threat"><h3>Client DB</h3><p>Every connected device logged to flash. Seizure = complete device inventory.</p></div>
+        <div class="threat"><h3>Carrier GPS</h3><p>LPP/SUPL/RRLP: carrier silently requests your coordinates. Modem responds without user consent.</p></div>
+        <div class="threat"><h3>System logs</h3><p>syslog, dmesg, shell history. Device seizure reveals full IMEI change history with timestamps.</p></div>
+      </div>
+    </div>
+
+    <!-- Countermeasures -->
+    <div class="section">
+      <div class="section-id">003</div>
+      <h2>Countermeasures</h2>
+      <table class="ev">
+        <thead><tr><th>Vector</th><th>Exposure</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td style="color:var(--red)">IMEI</td><td>Carrier tracking</td><td>Band-aligned TAC prefixes + Luhn-valid serial (random.choices, 10^6 keyspace)</td></tr>
+          <tr><td style="color:var(--red)">BSSID</td><td>Geolocation DBs</td><td>Randomized every boot</td></tr>
+          <tr><td style="color:var(--red)">WAN MAC</td><td>AP logging</td><td>Randomized every boot</td></tr>
+          <tr><td style="color:var(--red)">Client DB</td><td>Device seizure</td><td>Shredded + tmpfs (RAM only)</td></tr>
+          <tr><td style="color:var(--red)">Carrier GPS</td><td>Silent location</td><td>LPP/SUPL/RRLP disabled at boot via AT+QGPSCFG</td></tr>
+          <tr><td style="color:var(--red)">Logs</td><td>Forensics</td><td>syslog, dmesg, shell history wiped at boot, after IMEI change, and at shutdown</td></tr>
+          <tr><td style="color:var(--red)">DNS</td><td>Session correlation</td><td>dnsmasq cache flushed after IMEI change</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Live terminal -->
+    <div class="section">
+      <div class="section-id">004</div>
+      <h2>Procedure</h2>
+      <div class="term">
+        <div class="term-bar"><span>root@mudi</span><span class="live-dot">&#9679; live</span></div>
+        <div class="term-body" id="typed-terminal"></div>
+      </div>
+    </div>
+
+    <!-- Deploy -->
+    <div class="section">
+      <div class="section-id">005</div>
+      <h2>Deployment</h2>
+      <div class="term">
+        <div class="term-bar"><span>local</span><span>build</span></div>
+        <div class="term-body"><span class="p">$ </span><span class="c">git clone https://github.com/franckferman/red-merle.git</span>
+<span class="p">$ </span><span class="c">cd red-merle</span>
+
+<span class="o"># Quick build (no SDK needed)</span>
+<span class="p">$ </span><span class="c">./build.sh</span>
+
+<span class="o"># Build with OpenWrt SDK (same as CI)</span>
+<span class="p">$ </span><span class="c">./build.sh sdk-build</span>
+
+<span class="o"># Build + deploy to Mudi via SSH</span>
+<span class="p">$ </span><span class="c">./build.sh install</span></div>
+      </div>
+    </div>
+
+    <!-- Lineage -->
+    <div class="section">
+      <div class="section-id">006</div>
+      <h2>Lineage</h2>
+      <div class="intercept lineage">
+        <p>Fork of <a href="https://github.com/srlabs/blue-merle" style="color:var(--red);text-decoration:none">blue-merle</a><br class="mobile-br"> (Security Research Labs, 2022)</p>
+        <p style="margin-top:.5rem;color:var(--dim);font-size:.55rem;line-height:1.8">
+          Fixes: TAC/band fingerprinting (<a href="https://github.com/srlabs/blue-merle/issues/1" style="color:var(--red);text-decoration:none">Issue #1</a>),
+          IMEI entropy loss (random.sample),
+          syslog IMEI leak,
+          carrier GPS tracking (LPP/SUPL/RRLP)
+        </p>
+        <p style="margin-top:.5rem;color:var(--dim);font-size:.6rem">by <a href="https://github.com/franckferman" style="color:var(--red);text-decoration:none">Franck FERMAN</a></p>
+      </div>
+    </div>
+
+    <div class="links">
+      <a class="lnk" href="https://github.com/franckferman/red-merle/releases/latest">download</a>
+      <a class="lnk" href="https://github.com/franckferman/red-merle">source</a>
+      <a class="lnk" href="https://github.com/franckferman/red-merle#readme">readme</a>
+    </div>
+
+    <div class="footer">
+      <p style="color:var(--red);letter-spacing:.2em;font-size:.5rem">AUTHORIZED USE ONLY</p>
+      <p>For journalists, activists, and researchers under surveillance threat.<br>
+      IMEI modification may violate local law.</p>
+      <p style="margin-top:.8rem"><a href="https://github.com/franckferman">franckferman</a></p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Random hex/mac/imei generators
+function rHex(n){let s='';for(let i=0;i<n;i++)s+='0123456789ABCDEF'[Math.floor(Math.random()*16)];return s}
+function rMAC(){return rHex(2)+':'+rHex(2)+':'+rHex(2)+':'+rHex(2)+':'+rHex(2)+':'+rHex(2)}
+function rIMEI(){let s='3';for(let i=0;i<14;i++)s+=Math.floor(Math.random()*10);return s}
+function rLat(){return(40+Math.random()*15).toFixed(4)}
+function rLon(){return(-5+Math.random()*20).toFixed(4)}
+function rInt(a,b){return Math.floor(Math.random()*(b-a))+a}
+
+// Randomize surveillance data on each load
+document.querySelectorAll('.cam-data').forEach((el,i) => {
+  if(i===0) el.innerHTML='IMEI TRACKING<br><span class="val">'+rIMEI()+'</span><br>CARRIER: REGISTERED<br>STATUS: LOCATED';
+  if(i===1) el.innerHTML='BSSID GEOLOCATION<br><span class="val">'+rMAC()+'</span><br>WIGLE DB: MATCH<br>LAT: '+rLat()+' LON: '+rLon();
+  if(i===2) el.innerHTML='MAC CORRELATION<br><span class="val">'+rMAC()+'</span><br>SESSIONS: '+rInt(12,99)+'<br>LOCATIONS: '+rInt(3,30);
+  if(i===3) el.innerHTML='DEVICE INVENTORY<br><span class="val">'+rInt(8,120)+' DEVICES LOGGED</span><br>FLASH: /etc/oui-tertf<br>FORENSIC: READY';
+});
+
+// Clock
+function updateClock() {
+  const now = new Date();
+  const ts = now.toISOString().replace('T',' ').slice(0,19);
+  const el1 = document.getElementById('surv-clock');
+  const el2 = document.getElementById('timestamp');
+  if (el1) el1.textContent = ts;
+  if (el2) el2.textContent = ts + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Skip intro if seen recently (within 2 hours) or ?static in URL
+const INTRO_COOLDOWN = 2 * 60 * 60 * 1000; // 2 hours
+const lastSeen = parseInt(localStorage.getItem('rm_intro_ts') || '0', 10);
+const skipIntro = new URLSearchParams(window.location.search).has('static')
+  || (Date.now() - lastSeen < INTRO_COOLDOWN);
+localStorage.setItem('rm_intro_ts', Date.now().toString());
+
+if (skipIntro) {
+  document.getElementById('surveillance').style.display = 'none';
+  document.getElementById('glitch').style.display = 'none';
+  document.getElementById('signal-lost').style.display = 'none';
+  document.getElementById('main-site').classList.add('active');
+  const sections = document.querySelectorAll('.section');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.15 });
+  sections.forEach(s => obs.observe(s));
+  setTimeout(rotateQuote, 500);
+  setInterval(rotateQuote, 6000);
+  setTimeout(typeTerminal, 1000);
+} else {
+  // Phase 1 -> Phase 2 transition
+  setTimeout(() => {
+    document.getElementById('glitch').classList.add('active');
+  }, 4000);
+
+  setTimeout(() => {
+    document.getElementById('surveillance').style.opacity = '0';
+    document.getElementById('signal-lost').classList.add('active');
+  }, 6000);
+
+  setTimeout(() => {
+    document.getElementById('signal-lost').classList.remove('active');
+    document.getElementById('signal-lost').style.display = 'none';
+    document.getElementById('surveillance').style.display = 'none';
+    document.getElementById('main-site').classList.add('active');
+  }, 8500);
+
+  // Scroll reveal
+  setTimeout(() => {
+    const sections = document.querySelectorAll('.section');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.15 });
+    sections.forEach(s => obs.observe(s));
+  }, 9000);
+}
+
+// Quote rotator
+const quotes = [
+  { t: '"People should not be afraid of their governments. Governments should be afraid of their people."', s: 'V for Vendetta' },
+  { t: '"Big Brother is watching you."', s: 'George Orwell, 1984' },
+  { t: '"Arguing that you don\'t care about privacy because you have nothing to hide is like arguing that you don\'t care about free speech because you have nothing to say."', s: 'Edward Snowden' },
+  { t: '"Beneath this mask there is more than flesh. There is an idea, and ideas are bulletproof."', s: 'V for Vendetta' },
+  { t: '"In a time of universal deceit, telling the truth is a revolutionary act."', s: 'George Orwell' },
+  { t: '"They who can give up essential liberty to obtain a little temporary safety, deserve neither liberty nor safety."', s: 'Benjamin Franklin' },
+  { t: '"The internet is a surveillance state."', s: 'Bruce Schneier' },
+  { t: '"Privacy is the right to a free mind."', s: 'Eben Moglen' },
+  { t: '"The NSA\'s goal is to collect it all."', s: 'Glenn Greenwald' },
+];
+// Shuffle quotes
+for(let i=quotes.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[quotes[i],quotes[j]]=[quotes[j],quotes[i]]}
+let qi = 0;
+function rotateQuote() {
+  const el = document.getElementById('quote');
+  const src = document.getElementById('quote-src');
+  if (!el) return;
+  el.style.opacity = 0;
+  setTimeout(() => { el.innerHTML = quotes[qi].t; src.textContent = quotes[qi].s; el.style.opacity = 1; qi = (qi+1) % quotes.length; }, 500);
+}
+if (!skipIntro) setTimeout(() => { rotateQuote(); setInterval(rotateQuote, 6000); }, 9000);
+
+// Typing terminal
+const termLines = [
+  { text: '~# red-merle', cls: 'p', prompt: true },
+  { text: '', cls: 'o' },
+  { text: 'Swap SIM card and update IMEI? (Y/n): Y', cls: 'o' },
+  { text: 'Disabling RF signals...', cls: 'o' },
+  { text: '[+] Modem offline. No cellular connection.', cls: 'ok' },
+  { text: '', cls: 'o' },
+  { text: 'Replace the SIM card now. Press any key.', cls: 'o' },
+  { text: '', cls: 'o' },
+  { text: '[+] New IMSI detected.', cls: 'ok' },
+  { text: '[+] IMEI randomized: 35759049XXXXXX', cls: 'ok' },
+  { text: '[+] BSSID randomized.', cls: 'ok' },
+  { text: '[+] WAN MAC randomized.', cls: 'ok' },
+  { text: '[+] Client database shredded.', cls: 'ok' },
+  { text: '', cls: 'o' },
+  { text: '[!] Shutdown and change location.', cls: 'w' },
+];
+
+function typeTerminal() {
+  const container = document.getElementById('typed-terminal');
+  if (!container) return;
+  let lineIdx = 0;
+
+  function typeLine() {
+    if (lineIdx >= termLines.length) return;
+    const line = termLines[lineIdx];
+    const div = document.createElement('div');
+    div.style.whiteSpace = 'pre';
+    container.appendChild(div);
+
+    let charIdx = 0;
+    const text = line.text;
+
+    function typeChar() {
+      if (charIdx <= text.length) {
+        div.innerHTML = '<span class="' + line.cls + '">' + text.slice(0, charIdx) + '</span>' + (charIdx < text.length ? '<span style="border-right:2px solid var(--red)">&nbsp;</span>' : '');
+        charIdx++;
+        setTimeout(typeChar, 15 + Math.random() * 30);
+      } else {
+        lineIdx++;
+        setTimeout(typeLine, 200 + Math.random() * 400);
+      }
+    }
+
+    if (text === '') { div.innerHTML = '&nbsp;'; lineIdx++; setTimeout(typeLine, 100); }
+    else { typeChar(); }
+  }
+
+  typeLine();
+}
+
+if (!skipIntro) setTimeout(typeTerminal, 10000);
+
+// Dark ambient synth engine
+let audioCtx = null;
+let audioPlaying = false;
+let masterGain = null;
+
+function createAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0;
+  masterGain.connect(audioCtx.destination);
+
+  // Convolution reverb (generated impulse response)
+  const convolver = audioCtx.createConvolver();
+  const reverbLen = audioCtx.sampleRate * 5;
+  const impulse = audioCtx.createBuffer(2, reverbLen, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = impulse.getChannelData(ch);
+    for (let i = 0; i < reverbLen; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / reverbLen, 2.8);
+  }
+  convolver.buffer = impulse;
+  const wetGain = audioCtx.createGain();
+  wetGain.gain.value = 0.45;
+  convolver.connect(wetGain);
+  wetGain.connect(masterGain);
+  const dryGain = audioCtx.createGain();
+  dryGain.gain.value = 0.65;
+  dryGain.connect(masterGain);
+
+  // Detuned pad (6 oscillators with individual LFOs)
+  [55, 55.4, 82.41, 82.8, 110, 110.6].forEach(f => {
+    const osc = audioCtx.createOscillator();
+    osc.type = f < 80 ? 'sine' : 'triangle';
+    osc.frequency.value = f;
+    const g = audioCtx.createGain();
+    g.gain.value = 0.05;
+    const lfo = audioCtx.createOscillator();
+    lfo.frequency.value = 0.02 + Math.random() * 0.06;
+    const lg = audioCtx.createGain();
+    lg.gain.value = 0.018;
+    lfo.connect(lg); lg.connect(g.gain); lfo.start();
+    osc.connect(g); g.connect(convolver); g.connect(dryGain); osc.start();
+  });
+
+  // Sub-bass with slow pitch drift
+  const sub = audioCtx.createOscillator();
+  sub.type = 'sine'; sub.frequency.value = 32;
+  const subLfo = audioCtx.createOscillator();
+  subLfo.frequency.value = 0.015;
+  const slg = audioCtx.createGain(); slg.gain.value = 3;
+  subLfo.connect(slg); slg.connect(sub.frequency); subLfo.start();
+  const subG = audioCtx.createGain(); subG.gain.value = 0.18;
+  sub.connect(subG); subG.connect(dryGain); sub.start();
+
+  // Stereo filtered noise texture with sweeping bandpass
+  const nBuf = audioCtx.createBuffer(2, audioCtx.sampleRate * 4, audioCtx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) { const d = nBuf.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = nBuf; noise.loop = true;
+  const bp = audioCtx.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 300; bp.Q.value = 1.8;
+  const fLfo = audioCtx.createOscillator(); fLfo.frequency.value = 0.035;
+  const flg = audioCtx.createGain(); flg.gain.value = 250;
+  fLfo.connect(flg); flg.connect(bp.frequency); fLfo.start();
+  const nG = audioCtx.createGain(); nG.gain.value = 0.035;
+  noise.connect(bp); bp.connect(nG); nG.connect(convolver); nG.connect(dryGain); noise.start();
+
+  // Spectral tones (A minor scale, slow fade in/out through reverb)
+  const minorFreqs = [110, 130.81, 146.83, 164.81, 196, 220, 261.63, 293.66, 329.63];
+  function spawnTone() {
+    if (!audioPlaying) { setTimeout(spawnTone, 2000); return; }
+    const f = minorFreqs[Math.floor(Math.random() * minorFreqs.length)] * (Math.random() > 0.6 ? 0.5 : 1);
+    const o = audioCtx.createOscillator();
+    o.type = 'triangle'; o.frequency.value = f;
+    const detune = audioCtx.createOscillator();
+    detune.type = 'sine'; detune.frequency.value = f * 1.003;
+    const g = audioCtx.createGain(); g.gain.value = 0;
+    const attackTime = 1.5 + Math.random() * 2;
+    const holdTime = 2 + Math.random() * 3;
+    g.gain.setTargetAtTime(0.015 + Math.random() * 0.015, audioCtx.currentTime, attackTime);
+    g.gain.setTargetAtTime(0, audioCtx.currentTime + attackTime + holdTime, 1.8);
+    o.connect(g); detune.connect(g); g.connect(convolver);
+    o.start(); detune.start();
+    o.stop(audioCtx.currentTime + 12); detune.stop(audioCtx.currentTime + 12);
+    setTimeout(spawnTone, 6000 + Math.random() * 12000);
+  }
+  setTimeout(spawnTone, 1500);
+
+  // Radio interference - short digital bursts through reverb
+  function spawnBlip() {
+    if (!audioPlaying) { setTimeout(spawnBlip, 3000); return; }
+    const count = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < count; i++) {
+      setTimeout(() => {
+        const o = audioCtx.createOscillator();
+        o.type = Math.random() > 0.5 ? 'square' : 'sawtooth';
+        o.frequency.value = 500 + Math.random() * 2500;
+        const g = audioCtx.createGain();
+        const dur = 0.01 + Math.random() * 0.06;
+        g.gain.value = 0.012;
+        g.gain.setTargetAtTime(0, audioCtx.currentTime + dur, 0.008);
+        o.connect(g); g.connect(convolver);
+        o.start(); o.stop(audioCtx.currentTime + dur + 0.08);
+      }, i * (40 + Math.random() * 80));
+    }
+    setTimeout(spawnBlip, 5000 + Math.random() * 10000);
+  }
+  setTimeout(spawnBlip, 3000);
+
+  // Deep rumble pulse (very slow)
+  const rumble = audioCtx.createOscillator();
+  rumble.type = 'sine'; rumble.frequency.value = 20;
+  const rumbleG = audioCtx.createGain(); rumbleG.gain.value = 0;
+  const rumbleLfo = audioCtx.createOscillator(); rumbleLfo.frequency.value = 0.1;
+  const rlg = audioCtx.createGain(); rlg.gain.value = 0.08;
+  rumbleLfo.connect(rlg); rlg.connect(rumbleG.gain); rumbleLfo.start();
+  rumble.connect(rumbleG); rumbleG.connect(dryGain); rumble.start();
+}
+
+function toggleAudio() {
+  const btn = document.getElementById('audio-btn');
+  if (!audioPlaying) {
+    if (!audioCtx) createAudio();
+    else audioCtx.resume();
+    masterGain.gain.setTargetAtTime(0.15, audioCtx.currentTime, 0.3);
+    audioPlaying = true;
+    btn.textContent = '\u266B audio on';
+    btn.classList.add('on');
+  } else {
+    masterGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.3);
+    audioPlaying = false;
+    btn.textContent = '\u266B audio off';
+    btn.classList.remove('on');
+  }
+}
+
+// Matrix rain (red variant)
+(function() {
+  const canvas = document.getElementById('matrix-rain');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789@#$%^&*()_+-=[]{}|;:<>?/~';
+  const katakana = '\u30A0\u30A1\u30A2\u30A3\u30A4\u30A5\u30A6\u30A7\u30A8\u30A9\u30AA\u30AB\u30AC\u30AD\u30AE\u30AF\u30B0\u30B1\u30B2\u30B3\u30B4\u30B5\u30B6\u30B7\u30B8\u30B9\u30BA\u30BB\u30BC\u30BD\u30BE\u30BF\u30C0\u30C1\u30C2\u30C3\u30C4\u30C5\u30C6\u30C7\u30C8\u30C9';
+  const all = chars + katakana;
+  let fontSize = 11;
+  let columns, drops;
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    columns = Math.floor(canvas.width / fontSize);
+    drops = Array(columns).fill(1).map(() => Math.random() * -100);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    ctx.fillStyle = 'rgba(2,2,2,.04)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = fontSize + 'px monospace';
+
+    for (let i = 0; i < columns; i++) {
+      if (Math.random() > 0.98) {
+        ctx.fillStyle = 'rgba(204,17,0,.6)';
+      } else {
+        ctx.fillStyle = 'rgba(139,0,0,.35)';
+      }
+      const ch = all[Math.floor(Math.random() * all.length)];
+      ctx.fillText(ch, i * fontSize, drops[i] * fontSize);
+
+      if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i] += 0.5 + Math.random() * 0.5;
+    }
+    requestAnimationFrame(draw);
+  }
+
+  // Start after Phase 2 is visible
+  const startDelay = skipIntro ? 500 : 9500;
+  setTimeout(draw, startDelay);
+})();
+
+// Ghost reference fragments - dynamic pool
+(function() {
+  const container = document.getElementById('ghost-container');
+  if (!container) return;
+  const isMobile = window.innerWidth < 768;
+
+  const refs = [
+    // Matrix
+    { icon: '\u2620', text: 'FOLLOW THE WHITE RABBIT' },
+    { icon: '\u2699', text: 'THERE IS NO SPOON' },
+    { icon: '\u2058', text: 'WAKE UP NEO' },
+    { icon: '\u25C6', text: 'FREE YOUR MIND' },
+    { icon: '\u2588', text: 'THE MATRIX HAS YOU' },
+    { icon: '\u2302', text: 'WELCOME TO THE REAL WORLD' },
+    // V for Vendetta
+    { icon: '\u2694', text: 'REMEMBER THE 5TH OF NOVEMBER' },
+    { icon: '\u2731', text: 'IDEAS ARE BULLETPROOF' },
+    { icon: '\u2620', text: 'BENEATH THIS MASK' },
+    // Mr. Robot
+    { icon: '\u2733', text: 'WE ARE FSOCIETY' },
+    { icon: '\u2318', text: 'HELLO FRIEND' },
+    { icon: '\u26A0', text: 'CONTROL IS AN ILLUSION' },
+    { icon: '\u2716', text: 'OUR DEMOCRACY HAS BEEN HACKED' },
+    { icon: '\u2327', text: 'DELETE THE WORLD' },
+    // 1984
+    { icon: '\u26A0', text: 'WAR IS PEACE' },
+    { icon: '\u2630', text: 'FREEDOM IS SLAVERY' },
+    { icon: '\u25CE', text: 'BIG BROTHER IS WATCHING' },
+    { icon: '\u2298', text: 'THOUGHTCRIME' },
+    // Fight Club
+    { icon: '\u2622', text: 'THE FIRST RULE' },
+    { icon: '\u2620', text: 'THE THINGS YOU OWN END UP OWNING YOU' },
+    // Watchmen
+    { icon: '\u231A', text: 'WHO WATCHES THE WATCHMEN' },
+    // Cypherpunk
+    { icon: '\u2328', text: 'CYPHERPUNKS WRITE CODE' },
+    { icon: '\u26BF', text: 'HACK THE PLANET' },
+    // Ghost in the Shell
+    { icon: '\u2609', text: 'YOUR GHOST WHISPERS TO ME' },
+    // Generic resistance
+    { icon: '\u2691', text: 'THE SYSTEM IS THE ENEMY' },
+    { icon: '\u2621', text: 'PRIVACY IS NOT A CRIME' },
+    { icon: '\u2706', text: 'THEY ARE LISTENING' },
+    { icon: '\u2716', text: 'ENCRYPT EVERYTHING' },
+  ];
+
+  // Shuffle
+  for (let i = refs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [refs[i], refs[j]] = [refs[j], refs[i]];
+  }
+
+  let refIdx = 0;
+  let activeEl = null;
+
+  function spawnGhost() {
+    const ref = refs[refIdx];
+    refIdx = (refIdx + 1) % refs.length;
+
+    if (activeEl) { activeEl.remove(); activeEl = null; }
+
+    const el = document.createElement('div');
+    el.className = 'ghost-ref';
+    if (isMobile) el.style.fontSize = '.42rem';
+    el.innerHTML = '<span class="ghost-icon">' + ref.icon + '</span>' + ref.text;
+
+    const margin = isMobile ? 20 : 50;
+    el.style.top = (margin + Math.random() * (window.innerHeight - margin * 3)) + 'px';
+    el.style.left = (margin + Math.random() * (window.innerWidth - margin * 2 - (isMobile ? 120 : 200))) + 'px';
+
+    container.appendChild(el);
+    activeEl = el;
+
+    requestAnimationFrame(() => { el.classList.add('visible'); });
+
+    setTimeout(() => {
+      el.classList.remove('visible');
+      setTimeout(() => { if (el.parentNode) el.remove(); }, 3000);
+    }, 3500 + Math.random() * 4000);
+
+    setTimeout(spawnGhost, 5000 + Math.random() * 7000);
+  }
+
+  const startDelay = skipIntro ? 2000 : 12000;
+  setTimeout(spawnGhost, startDelay);
+})();
+</script>
+</body>
+</html>

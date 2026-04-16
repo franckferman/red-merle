@@ -1,0 +1,53 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+. /lib/functions/gl_util.sh
+
+if [ ! -f "/tmp/sim_change_start" ]; then
+	echo 0 > /tmp/sim_change_start
+fi
+
+if [ ! -f "/tmp/sim_change_switch" ]; then
+	sim_switch off
+fi
+
+now=$(date +%s)
+sim_change_last=`cat /tmp/sim_change_start`
+sim_change_diff=$((now-sim_change_last))
+
+if [[ "$sim_change_diff" -lt 60  ]]; then
+	mcu_send_message "[!] RATE LIMIT\nWait >60s between\nSIM swaps.\n(${sim_change_diff}s elapsed)"
+	exit 1
+fi
+
+echo "$now" > /tmp/sim_change_start
+
+mcu_send_message "== RED-MERLE ==\n[>] SIM SWAP\n    Stage 1/2"
+sleep 3
+
+mcu_send_message "[>] Disabling RF\n    radio..."
+sleep 1
+
+old_imei=$(READ_IMEI)
+old_imsi=$(READ_IMSI)
+
+answer=1
+while [[ "$answer" -eq 1 ]]; do
+	gl_modem AT AT+CFUN=4 | grep -q OK
+	if [[ $? -eq 1 ]]; then
+		mcu_send_message "[!] RF disable\n    failed.\n    Retrying..."
+		CHECK_ABORT
+	else
+		answer=0
+		mcu_send_message "[OK] RF disabled\n[>] Setting temp\n    IMEI..."
+		sleep 1
+	fi
+done
+
+# Generate a random IMEI to prevent a leak of the
+# new SIM's IMSI under the old IMEI
+timeout 15 python3 /lib/red-merle/imei_generate.py -r
+
+mcu_send_message "[OK] Temp IMEI set\n\n>> Replace SIM <<\n>> Pull switch <<"
+
+echo done > /tmp/red-merle-stage1

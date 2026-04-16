@@ -1,0 +1,7 @@
+config settings 'settings'
+	option hardening_mode 'hardening'
+	option auto_detect_modem '1'
+	option persistent_iptables '1'
+
+config imei 'imei'
+	option seed '1234567890'
