@@ -92,19 +92,64 @@ Hardened red-merle user:
 
 ### Decision framework
 
-**Choose stealth mode when**:
-- Your threat model involves **passive mass surveillance**
-- You want to avoid being flagged as a "person of technical interest"
-- You're operating in environments where privacy tools usage is itself suspicious
-- You're not currently under targeted investigation
-- You prefer **anonymity over maximum security**
+### Critical decision framework
 
-**Choose hardening mode when**:
-- You're facing **targeted technical threats**
-- You've detected IMSI catchers or forced network downgrades
-- You're already under investigation (technical sophistication already known)
-- You're in high-risk situations where location privacy is critical
-- You prefer **maximum security over anonymity**
+**The choice between modes cannot be solved universally**. It requires personal risk assessment based on your specific context, adversaries, and acceptable trade-offs.
+
+**Core question**: *Do I gain MORE from maximum protection (accepting detectability) or from remaining indistinguishable (accepting partial vulnerability)?*
+
+#### Stealth mode considerations
+
+**When stealth may be optimal**:
+- Mass surveillance is your primary concern
+- You want to avoid technical profiling ("person of interest")
+- Your adversaries lack sophisticated individual targeting capabilities
+- Privacy tool usage itself creates suspicion in your environment
+- You're not currently under active investigation
+
+**Stealth mode trade-offs**:
+- ✅ **Invisible** to carrier behavioral analysis
+- ✅ **Blends** with normal user population (millions of similar profiles)
+- ✅ **No escalation** of surveillance attention
+- ❌ **Partial protection** - sophisticated adversaries can still collect data
+- ❌ **Time vulnerability** - advanced techniques may identify you eventually
+- ❌ **False security** - you may underestimate collection happening
+
+#### Hardening mode considerations
+
+**When hardening may be optimal**:
+- You face technical threats requiring maximum protection
+- Location privacy is existentially critical
+- You've detected active targeting (IMSI catchers, forced downgrades)
+- Your technical sophistication is already known/assumed
+- Physical safety outweighs operational security concerns
+
+**Hardening mode trade-offs**:
+- ✅ **Maximum protection** against known attack vectors
+- ✅ **Blocks collection** at the modem level
+- ✅ **Resistance** to downgrade and positioning attacks
+- ❌ **Highly detectable** signature ("privacy-conscious user")
+- ❌ **Population correlation** - linkable with other red-merle users
+- ❌ **Attention escalation** - may trigger enhanced surveillance
+- ❌ **Current scale limitation** - small user base makes detection easier
+
+#### The personal calculation
+
+**Questions to ask yourself**:
+
+1. **Threat sophistication**: Can my adversaries already identify me through other means?
+2. **Current exposure**: Do they already know I use privacy tools?
+3. **Detection consequences**: What happens if I'm flagged as "technical"?
+4. **Protection value**: How much does GPS/SUPL blocking actually help my situation?
+5. **Time horizon**: Am I defending against immediate or long-term threats?
+6. **Alternative measures**: Do I have other privacy layers (VPN, Tor, burner devices)?
+
+**Example scenarios**:
+
+- *Journalist in authoritarian country*: Stealth may be better - being identified as "technical" could trigger investigation
+- *Activist under active surveillance*: Hardening may be better - they already know you're a target
+- *General privacy user*: Stealth usually optimal - mass surveillance is the main threat
+- *High-value target with physical threats*: Hardening may be necessary despite detectability
 
 **Switch dynamically**:
 ```sh
@@ -136,31 +181,84 @@ The effectiveness of each mode depends on **population-level adoption patterns**
 - **Community growth** benefits everyone by diluting hardening mode signatures
 - **Long-term** success depends on making privacy protection indistinguishable from normal usage
 
-### Honest assessment
+### Honest assessment: No perfect choices
 
-Neither mode provides perfect protection. Both involve trade-offs that users must understand:
+**Both modes involve fundamental trade-offs with no universally correct answer.**
 
-**Stealth mode limitations**:
-- Relies on network-layer blocking that sophisticated adversaries might circumvent
-- Provides incomplete protection against state-level threats with modem backdoors
-- May be less effective against targeted attacks using unknown positioning vectors
+#### Stealth mode reality check
 
-**Hardening mode limitations**:
-- Current user base size makes detection feasible for capable adversaries
-- May actually increase surveillance attention by signaling privacy consciousness
-- Could facilitate correlation with other red-merle users through signature matching
+**What it actually provides**:
+- Protection against mass automated collection
+- Invisibility in bulk carrier analytics  
+- Reduced risk of technical profiling
 
-**Universal limitations**:
-- Cannot prevent retrospective analysis of connection patterns and timing
-- SIM card and network registration remain primary identity vectors
-- Physical device seizure may reveal usage regardless of mode
-- Advanced persistent threats may have capabilities beyond documented protocols
+**What it cannot prevent**:
+- Sophisticated individual targeting with time and resources
+- Advanced correlation techniques by capable adversaries
+- Collection via unknown modem vulnerabilities or backdoors
+- Eventual detection if you become a high-value target
 
-### Recommendation
+**The bet you're making**: *"Staying invisible is more valuable than maximum protection because my adversaries primarily use bulk collection methods."*
 
-Start with **stealth mode** as the default. It provides meaningful protection against the most common threats (mass surveillance, bulk collection) while maintaining operational security through anonymity. Escalate to hardening mode only when facing specific technical threats that justify the increased detectability risk.
+#### Hardening mode reality check
 
-The most effective privacy strategy combines technological protection with operational security: change your IMEI, change your SIM, and change your physical location. Technology alone cannot solve the privacy problem, but it can raise the cost of surveillance and reduce the scope of data collection.
+**What it actually provides**:
+- Maximum protection against known attack vectors
+- Modem-level blocking of GPS and positioning requests
+- Resistance to downgrade attacks and IMSI catchers
+
+**What it cannot prevent**:
+- Detection as a "privacy-conscious user" by carrier analysis
+- Correlation with other red-merle users through behavioral signatures
+- Enhanced surveillance attention due to technical profile
+- Collection via attack vectors not addressed by AT commands
+
+**The bet you're making**: *"Maximum protection is worth the increased detectability risk because I face sophisticated technical threats."*
+
+#### The uncomfortable truth
+
+**Neither mode guarantees safety.** Privacy is a process, not a product. Both approaches can fail:
+
+- **Stealth can fail** when adversaries have time, resources, and individual focus
+- **Hardening can fail** when being identified as "technical" creates more risk than protection provides
+- **Both can fail** against adversaries with capabilities beyond documented protocols
+
+#### Risk acceptance framework
+
+Rather than asking *"Which mode is better?"*, ask:
+
+1. **What am I trying to prevent?** (Mass collection vs targeted attacks vs physical threats)
+2. **Who are my adversaries?** (Automated systems vs human analysts vs state actors) 
+3. **What are their likely capabilities?** (Bulk analysis vs individual targeting vs advanced techniques)
+4. **What happens if I'm detected?** (Inconvenience vs investigation vs physical danger)
+5. **What other protections do I have?** (VPN, Tor, burner devices, operational security)
+
+**The decision is ultimately about risk tolerance, not technical optimization.**
+
+### Practical guidance
+
+**Default recommendation**: Start with stealth mode for most users, as mass surveillance affects more people than targeted attacks. However, **you must evaluate your own situation**.
+
+**Dynamic approach**: The optimal choice can change based on circumstances:
+```sh
+# Start with stealth for normal operations
+red-merle-mode-switch stealth
+
+# Escalate during high-risk periods
+red-merle-mode-switch hardening  
+
+# Return to stealth when context changes
+red-merle-mode-switch stealth
+```
+
+**Combined with operational security**: Technology alone is insufficient. The most effective privacy strategy layers multiple protections:
+
+- **Technical**: Device hardening (red-merle) + network protection (VPN/Tor)
+- **Operational**: Change IMEI + change SIM + change physical location
+- **Behavioral**: Vary timing, routes, and communication patterns
+- **Compartmental**: Separate devices/identities for different activities
+
+**Final reality check**: Perfect privacy doesn't exist. The goal is raising the cost of surveillance to a level that exceeds the value of targeting you specifically. Both modes contribute to this goal through different mechanisms, and the choice depends on your personal risk assessment.
 
 ## Compatibility
 
