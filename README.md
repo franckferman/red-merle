@@ -128,8 +128,8 @@ The question is really: *"Are the specific GPS/SUPL/IMS protections worth the in
 #### Hardening mode considerations
 
 **When hardening may be optimal**:
-- You face technical threats requiring maximum protection
-- Location privacy is existentially critical
+- You face technical threats requiring protection against specific GPS/SUPL vectors
+- You want to block carrier-initiated positioning requests (but NOT triangulation)
 - You've detected active targeting (IMSI catchers, forced downgrades)
 - Your technical sophistication is already known/assumed
 - Physical safety outweighs operational security concerns
@@ -145,12 +145,17 @@ The question is really: *"Are the specific GPS/SUPL/IMS protections worth the in
 - ❌ **False security** - may feel more protected than you actually are
 
 **What hardening does NOT protect against**:
+- **Cell tower triangulation** - inherent to cellular network operation, unavoidable
+- **Timing-based positioning** - signal timing between towers reveals location
+- **Network registration location** - carrier knows which cell towers you connect to
 - Modem firmware vulnerabilities or backdoors
 - Zero-day exploits in baseband processors
 - Advanced correlation using cell tower timing/patterns
 - Side-channel attacks through power consumption or RF signatures
 - Social engineering, physical surveillance, or device seizure
 - Unknown positioning methods not controllable via AT commands
+
+**Critical location reality**: As long as your device connects to cellular networks, your approximate location is known to the carrier through basic network operation. Hardening mode only prevents **additional GPS-precision positioning requests** - it cannot hide that you're connected to specific cell towers.
 
 #### The personal calculation
 
