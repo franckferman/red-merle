@@ -1,0 +1,15 @@
+# Exclude documentation and static files from language statistics
+docs/** linguist-documentation
+docs/static/** linguist-generated
+
+# Mark build artifacts as generated
+*.ipk linguist-generated
+build/ linguist-generated
+
+# Documentation files
+*.pdf linguist-documentation
+*.png linguist-documentation
+Documentation.pdf linguist-documentation
+
+# Generated/vendored files
+files/www/luci-static/** linguist-vendored
