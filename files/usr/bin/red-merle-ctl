@@ -1,0 +1,396 @@
+#!/bin/sh
+#
+# red-merle-ctl - control utility for red-merle on GL-E750 (Mudi)
+#
+# One-stop dashboard and toggles: IMEI/IMSI/number, signal & radio state,
+# LTE-only flag, GNSS flag, hardening mode, SMS read/send, full revert.
+#
+# Usage: red-merle-ctl <command> [args]   (no command = interactive menu)
+#
+
+. /lib/red-merle/functions.sh
+
+# ── helpers ───────────────────────────────────────────────────────────
+
+MODEM_MODEL=""
+MODEM_TTY=""
+
+detect() {
+	MODEM_MODEL=$(DETECT_MODEM_MODEL)
+	MODEM_TTY=$(DETECT_MODEM_TTY | cut -d: -f2)
+}
+
+# Query the modem and print the raw response (also logged via AT_SEND).
+atq() {
+	gl_modem AT "$1" 2>&1
+}
+
+# LTE-only state: prints "on", "off" or "unknown"
+lte_only_state() {
+	case "$MODEM_MODEL" in
+		EP06|EC25)
+			atq 'AT+QCFG="nwscanmode"' | grep -q '"nwscanmode",3' && echo on || echo off ;;
+		EM060K|EM05)
+			atq 'AT+QNWPREFCFG="mode_pref"' | grep -qi '"mode_pref",LTE' && echo on || echo off ;;
+		*)
+			echo unknown ;;
+	esac
+}
+
+# GNSS state: prints raw query result
+gnss_state() {
+	atq 'AT+QGPS?' | grep -q '+QGPS: 1' && echo on || echo off
+}
+
+pause() {
+	echo -n "[press enter] "; read _x
+}
+
+# ── config options ────────────────────────────────────────────────────
+
+CONFIG_OPTIONS="wipe_logs randomize_mac randomize_bssid iptables_block gps_hardening volatile_history volatile_esim aggressive_log_wipe disable_esim_lpa"
+
+# Prints [+]/[-] for a boot option
+opt_mark() {
+	[ "$(GET_CONFIG_OPTION "$1" "$(OPT_DEFAULT "$1")")" = "1" ] && echo "on" || echo "off"
+}
+
+# ── commands ──────────────────────────────────────────────────────────
+
+cmd_status() {
+	detect
+	echo "== RED-MERLE STATUS =="
+	echo "Modem model   : $MODEM_MODEL (tty $MODEM_TTY)"
+	echo "Firmware      : $(atq 'AT+CGMR' | tr -d '\r' | grep -vE '^(OK|$)' | head -1)"
+	echo "Hardening mode: $(GET_HARDENING_MODE)"
+	echo "LTE-only      : $(lte_only_state)"
+	echo "GNSS engine   : $(gnss_state)"
+	echo "IMEI          : $(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)"
+	echo "IMSI          : $(atq 'AT+CIMI' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)"
+	echo "Own number    : $(atq 'AT+CNUM' | tr -d '\r' | grep '+CNUM' | cut -d, -f2 | tr -d '"' | head -1)"
+	echo "SIM           : $(atq 'AT+CPIN?' | tr -d '\r' | grep '+CPIN' | cut -d' ' -f2-)"
+	echo "Registration  : $(atq 'AT+CEREG?' | tr -d '\r' | grep '+CEREG' | head -1)"
+	echo "Signal (CSQ)  : $(atq 'AT+CSQ' | tr -d '\r' | grep '+CSQ' | cut -d' ' -f2)"
+	echo "Network       : $(atq 'AT+QNWINFO' | tr -d '\r' | grep '+QNWINFO' | cut -d' ' -f2-)"
+	echo "SUPL block    : $(iptables -C OUTPUT -p tcp --dport 7275 -j DROP >/dev/null 2>&1 && echo active || echo inactive)"
+	echo "Boot opts     : logs=$(opt_mark wipe_logs) mac=$(opt_mark randomize_mac) bssid=$(opt_mark randomize_bssid) iptables=$(opt_mark iptables_block) gps=$(opt_mark gps_hardening)"
+}
+
+cmd_lte_only() {
+	detect
+	case "$1" in
+		on)
+			case "$MODEM_MODEL" in
+				EP06|EC25)   AT_SEND 'AT+QCFG="nwscanmode",3,1' ;;
+				EM060K|EM05) AT_SEND 'AT+QNWPREFCFG="mode_pref",LTE' ;;
+				*)           AT_SEND 'AT+QCFG="nwscanmode",3,1' || AT_SEND 'AT+QNWPREFCFG="mode_pref",LTE' ;;
+			esac && echo "[+] LTE-only: on" || echo "[!] failed — see /tmp/red-merle-at.log" ;;
+		off)
+			case "$MODEM_MODEL" in
+				EP06|EC25)   AT_SEND 'AT+QCFG="nwscanmode",0,1' ;;
+				EM060K|EM05) AT_SEND 'AT+QNWPREFCFG="mode_pref",AUTO' ;;
+				*)           AT_SEND 'AT+QCFG="nwscanmode",0,1' || AT_SEND 'AT+QNWPREFCFG="mode_pref",AUTO' ;;
+			esac && echo "[+] LTE-only: off (all RATs)" || echo "[!] failed — see /tmp/red-merle-at.log" ;;
+		status|'') echo "LTE-only: $(lte_only_state)" ;;
+		*) echo "usage: red-merle-ctl lte-only {on|off|status}"; return 1 ;;
+	esac
+}
+
+cmd_gps() {
+	case "$1" in
+		on)  AT_SEND 'AT+QGPS=1' && echo "[+] GNSS engine: on (standalone)" || echo "[!] failed" ;;
+		off) AT_SEND 'AT+QGPSEND' && echo "[+] GNSS engine: off" || echo "[!] failed" ;;
+		status|'') echo "GNSS engine: $(gnss_state)" ;;
+		*) echo "usage: red-merle-ctl gps {on|off|status}"; return 1 ;;
+	esac
+}
+
+cmd_hardening() {
+	case "$1" in
+		on)
+			uci set red-merle.settings.hardening_mode='hardening'
+			uci commit red-merle
+			if DISABLE_CARRIER_GPS; then
+				echo "[+] hardening mode: on (AT suite applied)"
+			else
+				echo "[!] mode set, but some AT commands failed — see /tmp/red-merle-at.log"
+			fi ;;
+		off)
+			uci set red-merle.settings.hardening_mode='stealth'
+			uci commit red-merle
+			if REVERT_CARRIER_HARDENING; then
+				echo "[+] hardening mode: off (modem settings reverted)"
+			else
+				echo "[!] mode set, but revert had failures — see /tmp/red-merle-at.log"
+			fi ;;
+		status|'') echo "hardening mode: $(GET_HARDENING_MODE)" ;;
+		*) echo "usage: red-merle-ctl hardening {on|off|status}"; return 1 ;;
+	esac
+}
+
+cmd_imei() {
+	case "$1" in
+		show|'')       atq 'AT+GSN' ;;
+		random)        python3 /lib/red-merle/imei_generate.py -r -v ;;
+		deterministic) python3 /lib/red-merle/imei_generate.py -d -v ;;
+		native)        python3 /lib/red-merle/imei_generate.py -r -n -v ;;
+		pool)          python3 /lib/red-merle/imei_generate.py --list-pool ;;
+		brand)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl imei brand <apple|samsung|huawei|google|xiaomi>"; return 1; }
+			python3 /lib/red-merle/imei_generate.py -r -v --brand "$2" ;;
+		type)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl imei type <hotspot|phone>"; return 1; }
+			python3 /lib/red-merle/imei_generate.py -r -v --type "$2" ;;
+		model)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl imei model <text>"; return 1; }
+			shift
+			python3 /lib/red-merle/imei_generate.py -r -v --model "$*" ;;
+		set)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl imei set <15-digit IMEI>"; return 1; }
+			python3 /lib/red-merle/imei_generate.py -s "$2" -v ;;
+		*) echo "usage: red-merle-ctl imei {show|random|deterministic|native|pool|"
+		   echo "                             brand <b>|type <t>|model <text>|set <IMEI>}"; return 1 ;;
+	esac
+}
+
+cmd_signal() {
+	atq 'AT+CSQ'
+	atq 'AT+QENG="servingcell"'
+}
+
+cmd_sms() {
+	detect
+	case "$1" in
+		list|'')
+			atq 'AT+CMGF=1' > /dev/null
+			atq 'AT+CMGL="ALL"' ;;
+		read)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl sms read <index>"; return 1; }
+			atq 'AT+CMGF=1' > /dev/null
+			atq "AT+CMGR=$2" ;;
+		send)
+			[ -n "$2" ] && [ -n "$3" ] || { echo "usage: red-merle-ctl sms send <number> <text...>"; return 1; }
+			local num="$2"; shift 2
+			[ -c "$MODEM_TTY" ] || { echo "[!] no modem TTY"; return 1; }
+			printf 'AT+CMGF=1\r' > "$MODEM_TTY"; sleep 1
+			printf 'AT+CMGS="%s"\r' "$num" > "$MODEM_TTY"; sleep 1
+			# message body terminated by Ctrl-Z (octal 032)
+			printf '%s\032' "$*" > "$MODEM_TTY"; sleep 3
+			timeout 3 cat < "$MODEM_TTY" 2>/dev/null | tail -3
+			echo "[*] send attempted to $num — check 'sms list' for confirmation" ;;
+		del)
+			[ -n "$2" ] || { echo "usage: red-merle-ctl sms del <index>"; return 1; }
+			atq "AT+CMGD=$2" ;;
+		*) echo "usage: red-merle-ctl sms {list|read <i>|send <num> <text>|del <i>}"; return 1 ;;
+	esac
+}
+
+cmd_revert() {
+	echo "[*] reverting persistent modem settings (all RATs, IMS, XTRA)..."
+	if REVERT_CARRIER_HARDENING; then
+		echo "[+] modem restored to carrier defaults"
+	else
+		echo "[!] some commands failed — see /tmp/red-merle-at.log"
+	fi
+}
+
+cmd_config() {
+	case "$1" in
+		''|list)
+			echo "== RED-MERLE BOOT OPTIONS =="
+			echo "wipe_logs      : $(GET_CONFIG_OPTION wipe_logs 1) — wipe logs at boot/shutdown and after each IMEI change"
+			echo "randomize_mac  : $(GET_CONFIG_OPTION randomize_mac 1) — randomize upstream + AP MAC at boot"
+			echo "randomize_bssid: $(GET_CONFIG_OPTION randomize_bssid 1) — randomize WiFi BSSIDs at boot"
+			echo "iptables_block : $(GET_CONFIG_OPTION iptables_block 1) — block SUPL/OMA-DM ports (kills IPsec NAT-T)"
+			echo "gps_hardening  : $(GET_CONFIG_OPTION gps_hardening 1) — AT GPS hardening at boot (hardening mode only)"
+			echo ""
+			echo "volatile_history   : $(GET_CONFIG_OPTION volatile_history 1) — shell history to RAM instead of flash"
+			echo "volatile_esim      : $(GET_CONFIG_OPTION volatile_esim 0) — eSIM daemon state to RAM (also drops eSIM profiles at reboot)"
+			echo "aggressive_log_wipe: $(GET_CONFIG_OPTION aggressive_log_wipe 0) — wipe RAM logs during the session too"
+			echo "disable_esim_lpa   : $(GET_CONFIG_OPTION disable_esim_lpa 0) — stop GL eSIM daemon at boot"
+			;;
+		*)
+			case " $CONFIG_OPTIONS " in
+				*" $1 "*) ;;
+				*) echo "[!] unknown option '$1' (known: $CONFIG_OPTIONS)"; return 1 ;;
+			esac
+			case "$2" in
+				on|1)  val=1 ;;
+				off|0) val=0 ;;
+				*) echo "usage: red-merle-ctl config <name> on|off"; return 1 ;;
+			esac
+			uci set red-merle.settings.$1="$val"
+			uci commit red-merle
+			echo "[+] $1: $val" ;;
+	esac
+}
+
+cmd_esim() {
+	case "$1" in
+		on)
+			uci set red-merle.settings.disable_esim_lpa=0; uci commit red-merle
+			/etc/init.d/esim_lpa enable 2>/dev/null
+			/etc/init.d/esim_lpa start 2>/dev/null
+			echo "[+] eSIM LPA daemon: enabled and started" ;;
+		off)
+			uci set red-merle.settings.disable_esim_lpa=1; uci commit red-merle
+			/etc/init.d/esim_lpa stop 2>/dev/null
+			/etc/init.d/esim_lpa disable 2>/dev/null
+			echo "[+] eSIM LPA daemon: stopped and disabled (survives reboot)" ;;
+		sync)
+			imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+			if [ -n "$imei" ] && SYNC_ESIM_IMEI "$imei"; then
+				echo "[+] eSIM cached IMEI resynced to $imei"
+			else
+				echo "[!] could not read the modem IMEI"; return 1
+			fi ;;
+		status|'')
+			modem_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+			esim_imei=$(ESIM_CACHED_IMEI)
+			echo "== eSIM (GL LPA daemon) =="
+			echo "daemon      : $(ESIM_LPA_STATE) (uci disable_esim_lpa=$(GET_CONFIG_OPTION disable_esim_lpa 0))"
+			echo "modem IMEI  : ${modem_imei:-unknown}"
+			echo "cached IMEI : ${esim_imei:-none}"
+			if [ -n "$esim_imei" ] && [ -n "$modem_imei" ] && [ "$esim_imei" != "$modem_imei" ]; then
+				echo "[!] MISMATCH — the cached IMEI is a stale identity on disk."
+				echo "    Fix with: red-merle-ctl esim sync"
+			fi ;;
+		*)
+			echo "usage: red-merle-ctl esim {status|on|off|sync}"; return 1 ;;
+	esac
+}
+
+cmd_menu() {
+	while true; do
+		echo ""
+		echo "== RED-MERLE CTL =="
+		echo "1) status          6) GPS on/off"
+		echo "2) LTE-only on/off 7) SMS list"
+		echo "3) hardening on/off 8) IMEI show/random"
+		echo "4) signal          9) full revert"
+		echo "5) IMSI/number     c) boot config"
+		echo "e) eSIM daemon     0) quit"
+		echo "-- all of this works non-interactively too: red-merle-ctl --help"
+		echo -n "> "
+		read c
+		case "$c" in
+			1) cmd_status; pause ;;
+			2) echo -n "on/off? "; read x; cmd_lte_only "$x"; pause ;;
+			3) echo -n "on/off? "; read x; cmd_hardening "$x"; pause ;;
+			4) cmd_signal; pause ;;
+			5) atq 'AT+CIMI'; atq 'AT+CNUM'; pause ;;
+			6) echo -n "on/off? "; read x; cmd_gps "$x"; pause ;;
+			7) cmd_sms list; pause ;;
+			8) echo -n "show/random/deterministic? "; read x; cmd_imei "$x"; pause ;;
+			9) cmd_revert; pause ;;
+			c) echo -n "option (empty = list)? "; read o
+			   if [ -n "$o" ]; then
+				echo -n "on/off? "; read x; cmd_config "$o" "$x"
+			   else
+				cmd_config
+			   fi; pause ;;
+			e) echo -n "status/on/off/sync? "; read x; cmd_esim "$x"; pause ;;
+			0) exit 0 ;;
+			*) echo "?" ;;
+		esac
+	done
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────
+
+# Version comes from opkg so there is nothing extra to keep in sync.
+cmd_version() {
+	v=$(sed -n '/^Package: red-merle$/,/^$/s/^Version: //p' \
+		/usr/lib/opkg/status 2>/dev/null | head -1)
+	echo "red-merle ${v:-unknown}"
+}
+
+cmd_usage() {
+	cat <<'USAGE'
+red-merle-ctl — control utility for red-merle
+
+usage: red-merle-ctl [command] [args]        (no command = interactive menu)
+
+Every command also accepts a --flag form: --status, --lte-only on, --imei show…
+
+  status                 full dashboard (modem, IMEI, IMSI, signal, modes)
+  lte-only on|off        restrict modem to LTE (downgrade-attack protection)
+  gps on|off             GNSS engine on/off
+  hardening on|off       apply/revert the full AT hardening suite
+  imei show|random|deterministic|native|set <IMEI>
+  oled                   show the current IMEI and network on the front panel
+  oled-clear             clear it
+  imei pool              list the verified TAC pool (brand, type, model)
+  imei brand <name>      claim a specific brand: apple, samsung, huawei, google, xiaomi
+  imei type <class>      restrict to a device class; run "imei pool" to see
+                         which classes the pool currently holds
+  imei model <text>      claim a specific model, e.g. "iphone 15" or "mobile wifi"
+                         native draws from the GL.iNet TAC pool: claim to be
+                         what this device is, so the radio capability profile
+                         the modem reports stays coherent with the claim
+  imsi                   show IMSI
+  number                 show own phone number (AT+CNUM)
+  signal                 signal quality + serving cell
+  sms list|read <i>|send <num> <text>|del <i>
+  revert                 restore carrier defaults (all RATs, IMS, XTRA)
+  config [name on|off]   boot behavior options (list or set)
+  esim status|on|off|sync
+                         GL eSIM LPA daemon: show state, stop/start it,
+                         or resync its cached IMEI to the modem's
+  menu                   interactive menu (default)
+  version                package version
+  help                   this text
+
+The other red-merle commands:
+
+  red-merle              interactive SIM swap: powers the modem down, sets a
+                         new IMEI, waits for you to swap the SIM card
+  red-merle-ctl          this tool — everything else, day to day
+  red-merle-mode-switch  stealth <-> hardening in one shot
+                         (same as: red-merle-ctl hardening on|off)
+  red-merle-switch-stage1/2
+                         internal. Driven by the physical side switch, never
+                         meant to be run by hand.
+
+Examples:
+  red-merle-ctl status
+  red-merle-ctl --lte-only on
+  red-merle-ctl imei random
+  red-merle-ctl config randomize_mac off
+USAGE
+}
+
+# Accept --flag aliases for every command: --status behaves like status.
+cmd="${1:-menu}"
+case "$cmd" in
+	--*) cmd="${cmd#--}" ;;
+	-h)  cmd="help" ;;
+	-V)  cmd="version" ;;
+esac
+
+case "$cmd" in
+	help)                    cmd_usage; exit 0 ;;
+	version|ver)             cmd_version; exit 0 ;;
+esac
+
+case "$cmd" in
+	status|dash)             cmd_status ;;
+	lte-only|lte)            cmd_lte_only "$2" ;;
+	gps|gnss)                cmd_gps "$2" ;;
+	hardening|mode)          cmd_hardening "$2" ;;
+	imei)                    shift; cmd_imei "$@" ;;
+	imsi)                    atq 'AT+CIMI' ;;
+	number|msisdn)           atq 'AT+CNUM' ;;
+	signal)                  cmd_signal ;;
+	sms)                     shift; cmd_sms "$@" ;;
+	revert)                  cmd_revert ;;
+	config)                  cmd_config "$2" "$3" ;;
+	esim)                    cmd_esim "$2" ;;
+	oled)                    /usr/libexec/red-merle oled >/dev/null && echo "[+] pushed to the front panel" ;;
+	oled-clear)              /usr/libexec/red-merle oled-clear >/dev/null && echo "[+] front panel cleared" ;;
+	menu)                    cmd_menu ;;
+	*)
+		cmd_usage
+		[ "$cmd" = "menu" ] || exit 1
+		;;
+esac

@@ -1,0 +1,90 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+. /lib/functions/gl_util.sh
+
+rm -f /tmp/red-merle-stage1
+
+mcu_send_message "RED MERLE - SIM swap stage 2 of 2 (switch DOWN)"
+sleep 1
+sim_switch on
+
+leak=0
+old_imsi=$(cat /tmp/red-merle-old-imsi 2>/dev/null)
+rm -f /tmp/red-merle-old-imsi
+
+# Bounded: sim.sh runs this under `timeout`, and an unbounded retry loop on a
+# wedged modem would get the whole script killed before the log wipe, GPS
+# hardening and DNS flush below ever run.
+i=0
+while [ "$i" -lt 15 ]; do
+	gl_modem AT AT+CFUN=0 | grep -q OK && break
+	mcu_send_message "Modem reset failed, retrying..."
+	i=$((i+1))
+	sleep 1
+done
+
+i=0
+while [ "$i" -lt 15 ]; do
+	gl_modem AT AT+CFUN=4 | grep -q OK && break
+	leak=1
+	mcu_send_message "RF disable failed, retrying..."
+	i=$((i+1))
+	sleep 1
+done
+
+if [ "$leak" -eq 1 ]; then
+	mcu_send_message "Warning: reset took longer than expected"
+	sleep 3
+fi
+
+sleep 1
+
+new_imsi=$(READ_IMSI)
+
+if [ -z "$new_imsi" ]; then
+	mcu_send_message "Warning: no IMSI readable - is a SIM inserted?"
+	sleep 3
+elif [ -n "$old_imsi" ] && [ "$old_imsi" = "$new_imsi" ]; then
+	mcu_send_message "Warning: IMSI unchanged - did you swap the SIM?"
+	sleep 3
+fi
+old_imei=$(READ_IMEI)
+mcu_send_message "Generating new IMEI..."
+timeout 60 python3 /lib/red-merle/imei_generate.py -r
+
+new_imei=$(READ_IMEI)
+
+if [ "$old_imei" = "$new_imei" ]; then
+	mcu_send_message "Warning: IMEI unchanged"
+	sleep 3
+else
+	mcu_send_message "IMEI changed to ${new_imei}"
+	sleep 5
+	mkdir -p /tmp/modem.1-1.2
+	echo "$new_imei" > /tmp/modem.1-1.2/modem-imei
+	SYNC_ESIM_IMEI "$new_imei"
+fi
+
+mcu_send_message "Securing: logs, GPS, DNS"
+sleep 1
+
+WIPE_LOGS
+DISABLE_CARRIER_GPS
+FLUSH_DNS
+
+mcu_send_message "All clean, shutting down..."
+sleep 2
+mcu_send_message "Change your location before booting"
+sleep 5
+
+i=5
+until [ "$i" -eq 0 ]
+do
+        i=$((i-1))
+        mcu_send_message "Shutdown in ${i}..."
+        sleep 1
+done
+
+# Note: calling /sbin/poweroff directly results in the device rebooting into a broken state
+echo '{ "poweroff": "1" }' >/dev/ttyS0

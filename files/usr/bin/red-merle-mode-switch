@@ -1,0 +1,112 @@
+#!/bin/sh
+#
+# red-merle-mode-switch - Switch between stealth and hardening modes
+#
+
+. /lib/red-merle/functions.sh
+
+CURRENT_MODE=$(GET_HARDENING_MODE)
+
+show_status() {
+    echo "== RED-MERLE MODE STATUS =="
+    echo "Current mode: $CURRENT_MODE"
+    echo ""
+
+    case "$CURRENT_MODE" in
+        "stealth")
+            echo "STEALTH MODE (invisible to carrier):"
+            echo "  [+] iptables blocking SUPL/OMA-DM ports"
+            echo "  [+] MAC randomization (local only)"
+            echo "  [+] Log wiping"
+            echo "  [-] No AT command modifications"
+            echo ""
+            echo "Carrier sees: NORMAL profile (blend in)"
+            ;;
+        "hardening")
+            echo "HARDENING MODE (reduced attack surface):"
+            echo "  [+] iptables blocking SUPL/OMA-DM ports"
+            echo "  [+] MAC randomization (local only)"
+            echo "  [+] Log wiping"
+            echo "  [+] GPS/SUPL/IMS disabled via AT commands"
+            echo "  [+] 4G-only enforcement"
+            echo ""
+            echo "[!] Carrier sees: UNIQUE profile (identifiable)"
+            ;;
+        *)
+            echo "[!] Unrecognized mode '$CURRENT_MODE' in red-merle.settings."
+            echo "    Expected stealth or hardening; boot behaves as stealth."
+            ;;
+    esac
+}
+
+set_stealth_mode() {
+    echo "Setting STEALTH mode..."
+    uci set red-merle.settings.hardening_mode='stealth'
+    uci commit red-merle
+    echo "[+] Mode set to stealth"
+    echo ""
+    # AT settings from hardening mode persist in the modem's NV memory:
+    # they must be reverted explicitly or the modem stays LTE-only/IMS-off.
+    echo "Reverting persistent modem settings (LTE-only, IMS, XTRA)..."
+    if REVERT_CARRIER_HARDENING; then
+        echo "[+] Modem settings restored (all RATs, IMS on)"
+    else
+        echo "[!] Some AT commands failed — check /tmp/red-merle-at.log"
+    fi
+    echo ""
+    echo "Benefits:"
+    echo "  + Invisible to network analysis"
+    echo "  + Blends in with normal users"
+    echo "  + Blocks data collection at network level"
+    echo ""
+    echo "Limitations:"
+    echo "  - GPS/SUPL still active at modem level"
+    echo "  - IMS/VoLTE metadata still collected"
+}
+
+set_hardening_mode() {
+    echo "Setting HARDENING mode..."
+    uci set red-merle.settings.hardening_mode='hardening'
+    uci commit red-merle
+    echo "[+] Mode set to hardening"
+    echo ""
+    # Apply the AT suite now instead of waiting for the next boot
+    echo "Applying AT hardening to the modem..."
+    if DISABLE_CARRIER_GPS; then
+        echo "[+] AT hardening applied"
+    else
+        echo "[!] Some AT commands failed — check /tmp/red-merle-at.log"
+    fi
+    echo ""
+    echo "Benefits:"
+    echo "  + Maximum attack surface reduction"
+    echo "  + GPS/SUPL/IMS fully disabled"
+    echo "  + 4G-only (no IMSI catcher downgrade)"
+    echo ""
+    echo "[!] WARNING:"
+    echo "  - Creates unique network signature"
+    echo "  - Identifies you as privacy-conscious user"
+    echo "  - May trigger targeted analysis"
+    echo "  - Voice calls impossible (no CSFB/VoLTE); SMS only via SMS-over-SGs"
+    echo "  - Revert with: red-merle-mode-switch stealth"
+}
+
+case "${1:-status}" in
+    "status")
+        show_status
+        ;;
+    "stealth")
+        set_stealth_mode
+        ;;
+    "hardening"|"harden")
+        set_hardening_mode
+        ;;
+    *)
+        echo "Usage: $0 {status|stealth|hardening}"
+        echo ""
+        echo "  status     Show current mode and capabilities"
+        echo "  stealth    Set stealth mode + revert persistent modem settings"
+        echo "             (LTE-only, IMS, XTRA) applied by hardening mode"
+        echo "  hardening  Set hardening mode + apply the AT suite immediately"
+        ;;
+esac

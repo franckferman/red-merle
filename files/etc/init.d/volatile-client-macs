@@ -1,0 +1,36 @@
+#!/bin/sh /etc/rc.common
+
+# MAC addresses of connected clients are stored in a sqlite database.
+# Having the database seems to be necessary for the device to be working properly.
+# We intent to have the device store the database in RAM rather than on flash.
+# We replace the directory with a memory-backed tmpfs which is as volatile as we can make it.
+
+# We want to run ahead of "gl-tertf" which, currently, has a prioprity of 60.
+# We also want to run ahead of "gl_clients" which has 99.
+START=9
+STOP=99
+
+start() {
+    tmpdir="$(mktemp -d)"
+    # We mount a tmpfs so that the client database will be stored in memory only
+    mount -t tmpfs / "$tmpdir"
+    # Only propagate the old database if it is a valid sqlite file:
+    # gl_clients_update crash-loops on a corrupted one
+    if [ "$(head -c 15 /etc/oui-tertf/client.db 2>/dev/null)" = "SQLite format 3" ]; then
+        cp -a /etc/oui-tertf/client.db "$tmpdir"
+    fi
+    shred --force --remove  /etc/oui-tertf/client.db ||  rm -f /etc/oui-tertf/client.db
+    # If this script runs multiple times, we accumulate mounts; we try to avoid having mounts over mounts, so we unmount any existing tmpfs
+    umount -t tmpfs -l /etc/oui-tertf
+
+    mount -t tmpfs / /etc/oui-tertf
+    [ -f "$tmpdir/client.db" ] && cp -a "$tmpdir/client.db" /etc/oui-tertf/client.db
+    umount -t tmpfs -l "$tmpdir"
+}
+
+stop() {
+    # shred without --remove leaves a garbage-filled file in place,
+    # which the next boot would mistake for a valid database
+    shred --force --remove /etc/oui-tertf/client.db 2>/dev/null ||  rm -f /etc/oui-tertf/client.db
+}
+

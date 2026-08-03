@@ -1,0 +1,38 @@
+{
+	"luci-app-red-merle": {
+		"description": "Grant access to the red-merle control dashboard",
+		"read": {
+			"cgi-io": [ "exec" ],
+			"file": {
+				"/usr/libexec/red-merle": [ "exec" ],
+				"/usr/libexec/red-merle shred": [ "exec" ],
+				"/usr/libexec/red-merle status": [ "exec" ],
+				"/usr/libexec/red-merle at-log": [ "exec" ],
+				"/usr/libexec/red-merle set-option *": [ "exec" ],
+				"/usr/libexec/red-merle lte-only *": [ "exec" ],
+				"/usr/libexec/red-merle gps *": [ "exec" ],
+				"/usr/libexec/red-merle hardening *": [ "exec" ],
+				"/usr/libexec/red-merle *": [ "exec" ],
+				"/etc/opkg.conf": [ "read" ],
+				"/etc/opkg/*.conf": [ "read" ]
+			},
+			"ubus": {
+				"luci": [ "getMountPoints" ]
+			}
+		},
+		"write": {
+			"file": {
+				"/usr/libexec/red-merle": [ "exec" ],
+				"/usr/libexec/red-merle shred": [ "exec" ],
+				"/usr/libexec/red-merle status": [ "exec" ],
+				"/usr/libexec/red-merle at-log": [ "exec" ],
+				"/usr/libexec/red-merle set-option *": [ "exec" ],
+				"/usr/libexec/red-merle lte-only *": [ "exec" ],
+				"/usr/libexec/red-merle gps *": [ "exec" ],
+				"/usr/libexec/red-merle hardening *": [ "exec" ],
+				"/usr/libexec/red-merle *": [ "exec" ],
+				"/tmp/upload.ipk": [ "write" ]
+			}
+		}
+	}
+}

@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Merle — Control</title>
+<link rel="stylesheet" href="/theme/base.css">
+<link rel="stylesheet" href="/theme/default/index.css" id="rm-theme">
+<script>
+/* Follow the panel's active theme. The GL app stores it under "theme" and
+   swaps its own <link>; we mirror that here, including the "default" theme —
+   skipping it used to leave every semantic variable undefined, which is why
+   this page stayed dark while the panel was light. */
+(function () {
+  var link = document.getElementById("rm-theme");
+  var apply = function () {
+    var t = localStorage.getItem("theme") || "default";
+    var href = "/theme/" + t + "/index.css";
+    if (link.getAttribute("href") !== href) link.setAttribute("href", href);
+  };
+  apply();
+  /* the panel runs in another tab: follow a theme change live */
+  window.addEventListener("storage", function (e) { if (e.key === "theme") apply(); });
+})();
+</script>
+<style>
+  :root {
+    /* One fixed note that survives every theme: the trefoil. Everything else
+       is borrowed from the active GL theme so this page belongs to it. */
+    --rm-brand: #e03e2d;
+    --rm-ok: var(--success, #3f9d6b);
+    --rm-bad: var(--error, #d0342c);
+    --rm-gap: 20px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--background-main);
+    color: var(--text-regular);
+    font-family: Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+  code, .mono, table.kv td:last-child {
+    font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Field names are signposts, not content: small, spaced, quiet. */
+  .label {
+    font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--text-weak); font-weight: 600;
+  }
+  a { color: var(--primary); }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+  /* ── header ─────────────────────────────────────────────────────── */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 var(--rm-gap); height: 56px;
+    background: var(--background-header);
+    border-bottom: 1px solid var(--divider);
+  }
+  header .mark {
+    color: var(--rm-brand); font-size: 20px; line-height: 1;
+  }
+  header .who { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  header .who b {
+    color: var(--text-header); font-size: 15px; font-weight: 700;
+    letter-spacing: .04em;
+  }
+  header .who span {
+    font-size: 11px; color: var(--text-hint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  header nav { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+  header nav a {
+    color: var(--text-nav); text-decoration: none; font-size: 13px;
+    padding: 6px 10px; border-radius: 4px;
+  }
+  header nav a:hover { background: var(--background-title); }
+
+  main { padding: var(--rm-gap); max-width: 1120px; margin: 0 auto; }
+
+  /* ── identity strip: the thing this whole tool exists to control ── */
+  .identity {
+    border: 1px solid var(--border); border-left: 3px solid var(--rm-brand);
+    border-radius: 6px; background: var(--background-card);
+    padding: 16px 18px; margin-bottom: var(--rm-gap);
+  }
+  .identity .head {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .identity .vals {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 1px; background: var(--divider);
+    border: 1px solid var(--divider); border-radius: 4px; overflow: hidden;
+  }
+  .identity .val { background: var(--background-card); padding: 12px 14px; }
+  .identity .val .n {
+    display: block; margin-top: 6px;
+    font-family: "JetBrains Mono", "DejaVu Sans Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 19px; letter-spacing: .01em; color: var(--text-strong);
+    word-break: break-all;
+  }
+  .identity .val .n.dim { color: var(--text-hint); font-size: 15px; }
+  .verdict {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--text-weak);
+  }
+  .verdict .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-hint); flex: none;
+  }
+  .verdict.ok .dot { background: var(--rm-ok); }
+  .verdict.bad { color: var(--rm-bad); }
+  .verdict.bad .dot { background: var(--rm-bad); }
+  .fix {
+    margin: 12px 0 0; padding: 9px 11px; border-radius: 4px;
+    background: var(--error-background, transparent);
+    border: 1px solid var(--rm-bad); color: var(--rm-bad);
+    font-size: 12px; line-height: 1.6; display: none;
+  }
+  .fix.show { display: block; }
+  .fix code { background: none; color: inherit; font-size: 12px; }
+
+  /* ── cards ──────────────────────────────────────────────────────── */
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    gap: var(--rm-gap);
+  }
+  .card {
+    background: var(--background-card); border: 1px solid var(--border);
+    border-radius: 6px; padding: 14px 16px 6px;
+  }
+  .card > h2 {
+    margin: 0 0 4px; display: flex; align-items: center; gap: 8px;
+    font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--text-weak); font-weight: 600;
+  }
+  .card > h2 .spacer { margin-left: auto; }
+  .card > p.note {
+    margin: 0 0 10px; font-size: 12px; line-height: 1.6; color: var(--text-hint);
+  }
+  table.kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.kv td { padding: 6px 0; border-bottom: 1px solid var(--divider); }
+  table.kv tr:last-child td { border-bottom: none; }
+  table.kv td:first-child { color: var(--text-weak); width: 45%; }
+  table.kv td:last-child {
+    color: var(--text-strong); font-size: 12px; text-align: right;
+    word-break: break-all;
+  }
+  .row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--divider);
+  }
+  .row:last-child { border-bottom: none; }
+  .row .name { color: var(--text-regular); font-size: 13px; }
+  .row .name em { font-style: normal; color: var(--text-hint); font-size: 11px; }
+  .row .ctl { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  select {
+    font: inherit; font-size: 12px; padding: 4px 8px; border-radius: 4px;
+    background: var(--background-title); color: var(--text-regular);
+    border: 1px solid var(--border); max-width: 190px;
+  }
+  .state {
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
+    color: var(--text-hint); min-width: 30px; text-align: right;
+  }
+  .state.on { color: var(--rm-ok); }
+
+  /* ── controls ───────────────────────────────────────────────────── */
+  button {
+    font: inherit; font-size: 12px; cursor: pointer;
+    padding: 5px 12px; border-radius: 4px;
+    background: transparent; color: var(--text-weak);
+    border: 1px solid var(--border);
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  button:hover:not(:disabled) { color: var(--text-strong); border-color: var(--primary); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  /* The highlighted button is the one that reflects the device, never a
+     default: the card must not claim "on" when the modem says otherwise. */
+  button.active {
+    background: var(--primary); border-color: var(--primary);
+    color: var(--background-card); font-weight: 600;
+  }
+  button.go { border-color: var(--primary); color: var(--primary); }
+  button.go:hover:not(:disabled) { background: var(--primary); color: var(--background-card); }
+
+  pre.log {
+    background: var(--background-title); border: 1px solid var(--divider);
+    border-radius: 4px; padding: 10px; margin: 0 0 10px;
+    font-size: 11px; line-height: 1.55; max-height: 240px; overflow: auto;
+    white-space: pre-wrap; word-break: break-all; color: var(--text-regular);
+  }
+  .err { color: var(--rm-bad); font-size: 12px; line-height: 1.6; }
+
+  /* ── SIM swap: a real two-stage procedure, so it is numbered ─────── */
+  .modal-back {
+    position: fixed; inset: 0; background: var(--mask, rgba(0,0,0,.6));
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal-back.open { display: flex; }
+  .modal {
+    background: var(--background-card); border: 1px solid var(--border);
+    border-top: 3px solid var(--rm-brand); border-radius: 6px;
+    padding: 20px 22px; width: 100%; max-width: 560px;
+    max-height: 88vh; overflow: auto;
+  }
+  .modal h3 {
+    margin: 0 0 16px; font-size: 11px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--text-weak);
+  }
+  .modal p { font-size: 13px; line-height: 1.65; color: var(--text-regular); }
+  .modal .imei {
+    font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums;
+    font-size: 17px; color: var(--text-strong); word-break: break-all;
+  }
+  .modal .warn { color: var(--warning, var(--rm-bad)); }
+  .modal .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .step {
+    display: flex; gap: 10px; align-items: baseline;
+    font-size: 13px; color: var(--text-weak); margin: 8px 0;
+  }
+  .step .num {
+    font-family: "JetBrains Mono", monospace; font-size: 11px;
+    color: var(--text-hint); flex: none;
+  }
+  .step.done { color: var(--rm-ok); }
+  .step.done .num { color: var(--rm-ok); }
+  label.pick { font-size: 13px; color: var(--text-regular); margin-right: 14px; }
+
+  #toast {
+    position: fixed; bottom: 18px; right: 18px; z-index: 200;
+    padding: 10px 16px; border-radius: 4px; font-size: 13px;
+    background: var(--background-title); color: var(--text-strong);
+    border: 1px solid var(--primary); display: none;
+  }
+
+  @media (max-width: 560px) {
+    header { height: auto; padding: 10px var(--rm-gap); flex-wrap: wrap; }
+    .identity .val .n { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="mark">&#9762;</span>
+  <span class="who">
+    <b>RED MERLE</b>
+    <span id="device">reading device…</span>
+  </span>
+  <nav>
+    <a href="/cgi-bin/luci/admin/network/red-merle">Advanced</a>
+    <a href="/">Admin Panel</a>
+  </nav>
+</header>
+
+<main>
+  <!-- The identity the network sees. This is what the tool exists to change. -->
+  <section class="identity">
+    <div class="head">
+      <span class="label">Identity on the network</span>
+      <span class="verdict" id="verdict"><span class="dot"></span><span id="verdict-text">checking…</span></span>
+    </div>
+    <div class="vals">
+      <div class="val"><span class="label">IMEI · modem</span><span class="n" id="id-imei">—</span></div>
+      <div class="val"><span class="label">IMEI · stored by eSIM daemon</span><span class="n" id="id-esim">—</span></div>
+      <div class="val"><span class="label">IMSI · SIM card</span><span class="n" id="id-imsi">—</span></div>
+    </div>
+    <p class="fix" id="fix"></p>
+  </section>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Modem <span class="spacer"></span>
+        <button onclick="loadStatus()" title="Re-read the modem">Refresh</button></h2>
+      <table class="kv" id="status-table"><tr><td>reading…</td></tr></table>
+    </div>
+
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="row"><span class="name">Hardening mode</span><span class="ctl">
+        <span class="state" id="st-hardening">…</span>
+        <button id="btn-hardening-on" onclick="toggle('hardening','on')">on</button>
+        <button id="btn-hardening-off" onclick="toggle('hardening','off')">off</button></span></div>
+      <div class="row"><span class="name">LTE only</span><span class="ctl">
+        <span class="state" id="st-lte">…</span>
+        <button id="btn-lte-only-on" onclick="toggle('lte-only','on')">on</button>
+        <button id="btn-lte-only-off" onclick="toggle('lte-only','off')">off</button></span></div>
+      <div class="row"><span class="name">GNSS engine</span><span class="ctl">
+        <span class="state" id="st-gps">…</span>
+        <button id="btn-gps-on" onclick="toggle('gps','on')">on</button>
+        <button id="btn-gps-off" onclick="toggle('gps','off')">off</button></span></div>
+      <div class="row"><span class="name">eSIM daemon <em>GL LPA</em></span><span class="ctl">
+        <span class="state" id="st-esim">…</span>
+        <button id="btn-esim-on" onclick="toggleEsim('on')">on</button>
+        <button id="btn-esim-off" onclick="toggleEsim('off')">off</button></span></div>
+      <div class="row"><span class="name">Front panel
+        <em>the screen keeps the last message until replaced</em></span><span class="ctl">
+        <button onclick="oled('oled', this)">Show identity</button>
+        <button onclick="oled('oled-clear', this)">Clear</button></span></div>
+      <div class="row"><span class="name">New random IMEI
+        <em id="claim-note">claims a random device from the pool</em></span><span class="ctl">
+        <select id="claim" onchange="claimNote()"></select>
+        <button class="go" onclick="randomImei(this)">Set</button></span></div>
+    </div>
+
+    <div class="card">
+      <h2>SIM swap</h2>
+      <p class="note">Two stages, with the modem's radio off in between. The IMEI
+        that the new SIM is seen with is set in stage 2, after you swap the card.</p>
+      <div class="row"><span class="name">Full sequence</span><span class="ctl">
+        <button class="go" onclick="simSwap()">Start</button></span></div>
+    </div>
+
+    <div class="card">
+      <h2>Boot behaviour</h2>
+      <div id="opts"><p class="note">reading…</p></div>
+    </div>
+
+    <div class="card" style="grid-column: 1 / -1">
+      <h2>AT command log <span class="spacer"></span>
+        <button onclick="loadLog()">Refresh</button></h2>
+      <p class="note">Commands red-merle sends to change the modem, with its raw
+        replies. Kept in RAM only, cleared at every reboot.</p>
+      <pre class="log" id="atlog">not loaded</pre>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<div class="modal-back" id="swap-back">
+  <div class="modal">
+    <h3>SIM swap</h3>
+    <div id="swap-body"></div>
+  </div>
+</div>
+
+<script>
+var API = "/cgi-bin/redmerle-api";
+
+function toast(msg) {
+  var t = document.getElementById("toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  setTimeout(function () { t.style.display = "none"; }, 2800);
+}
+
+function call(action, arg, arg2) {
+  var url = API + "?action=" + encodeURIComponent(action);
+  if (arg != null) url += "&arg=" + encodeURIComponent(arg);
+  if (arg2 != null) url += "&arg2=" + encodeURIComponent(arg2);
+  return fetch(url, { credentials: "same-origin" }).then(function (r) {
+    if (r.status === 403) throw "forbidden";
+    return r.text();
+  });
+}
+function callJson(action, arg, arg2) {
+  return call(action, arg, arg2).then(function (t) { return JSON.parse(t); });
+}
+
+function esc(s) {
+  return String(s == null || s === "" ? "unknown" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;");
+}
+function errHtml(e) {
+  if (e === "forbidden")
+    return 'Your panel session expired. <a href="/">Log in to the Admin Panel</a>, then reload this page.';
+  return "The backend did not answer (" + String(e) + ").";
+}
+
+var FIELDS = [
+  ["modem_model", "Model"], ["modem_fw", "Firmware"],
+  ["sim", "SIM"], ["registration", "Registration"],
+  ["signal", "Signal (CSQ)"], ["network", "Network"],
+  ["number", "Own number"], ["supl_block", "SUPL block"]
+];
+
+var OPTS = {
+  wipe_logs: "Wipe logs",
+  randomize_mac: "Randomize MAC",
+  randomize_bssid: "Randomize BSSID",
+  iptables_block: "Block SUPL / OMA-DM",
+  gps_hardening: "Harden GPS at boot",
+  volatile_history: "Shell history in RAM",
+  volatile_esim: "eSIM state in RAM",
+  aggressive_log_wipe: "Wipe logs during the session",
+  disable_esim_lpa: "Stop the eSIM daemon"
+};
+/* Two of these trade something away, so say what before the operator clicks. */
+var OPT_WARN = {
+  volatile_esim: "also drops eSIM profiles at every reboot",
+  aggressive_log_wipe: "you lose the logs you would need to investigate a live compromise",
+  disable_esim_lpa: "eSIM provisioning stops working"
+};
+
+function setText(id, v) { document.getElementById(id).textContent = v; }
+
+function renderStatus(s) {
+  setText("device", (s.modem_model || "modem") + " · " + (s.modem_fw || "firmware unknown"));
+
+  setText("id-imei", s.imei || "unknown");
+  setText("id-imsi", s.imsi || "no SIM");
+  document.getElementById("id-imsi").className = s.imsi ? "n" : "n dim";
+  setText("id-esim", s.esim_imei || "not stored");
+  document.getElementById("id-esim").className = s.esim_imei ? "n" : "n dim";
+
+  var v = document.getElementById("verdict"), fix = document.getElementById("fix");
+  if (s.esim_imei && s.imei && s.esim_imei !== s.imei) {
+    v.className = "verdict bad";
+    setText("verdict-text", "two identities on this device");
+    fix.innerHTML = "The eSIM daemon still holds <b>" + esc(s.esim_imei)
+      + "</b>. It never refreshes that value on its own, so a previous identity "
+      + "stays on disk across reboots. Clear it with <code>red-merle-ctl esim sync</code>.";
+    fix.className = "fix show";
+  } else if (s.imei) {
+    v.className = "verdict ok";
+    setText("verdict-text", s.esim_imei ? "one identity, everywhere" : "one identity");
+    fix.className = "fix";
+  } else {
+    v.className = "verdict";
+    setText("verdict-text", "modem did not answer");
+    fix.className = "fix";
+  }
+
+  var html = "";
+  FIELDS.forEach(function (f) {
+    html += "<tr><td>" + f[1] + "</td><td>" + esc(s[f[0]]) + "</td></tr>";
+  });
+  document.getElementById("status-table").innerHTML = html;
+
+  setState("st-hardening", s.hardening_mode, "hardening");
+  setState("st-lte", s.lte_only, "lte-only");
+  setState("st-gps", s.gnss, "gps");
+  setState("st-esim", s.esim_lpa === "running" ? "on" : "off", "esim");
+
+  var o = "";
+  Object.keys(OPTS).forEach(function (k) {
+    var on = !!(s.opts && s.opts[k]);
+    o += '<div class="row"><span class="name">' + OPTS[k]
+       + (OPT_WARN[k] ? ' <em>' + OPT_WARN[k] + "</em>" : "")
+       + '</span><span class="ctl">'
+       + '<span class="state ' + (on ? "on" : "") + '">' + (on ? "on" : "off") + "</span>"
+       + '<button onclick="setOpt(\'' + k + "'," + (on ? 0 : 1) + ')">'
+       + (on ? "Turn off" : "Turn on") + "</button></span></div>";
+  });
+  document.getElementById("opts").innerHTML = o;
+}
+
+function setState(id, val, key) {
+  var e = document.getElementById(id);
+  var on = (val === "on" || val === "hardening");
+  var known = (val === "on" || val === "off" || val === "hardening" || val === "stealth");
+  e.textContent = val || "?";
+  e.className = "state" + (on ? " on" : "");
+  var bOn = document.getElementById("btn-" + key + "-on");
+  var bOff = document.getElementById("btn-" + key + "-off");
+  if (bOn && bOff) {
+    bOn.className = (known && on) ? "active" : "";
+    bOff.className = (known && !on) ? "active" : "";
+  }
+}
+
+function loadStatus() {
+  callJson("status").then(renderStatus).catch(function (e) {
+    document.getElementById("status-table").innerHTML =
+      '<tr><td colspan="2" class="err">' + errHtml(e) + "</td></tr>";
+    document.getElementById("opts").innerHTML = '<p class="err">' + errHtml(e) + "</p>";
+    setText("verdict-text", "cannot read the device");
+    document.getElementById("verdict").className = "verdict";
+    ["st-hardening", "st-lte", "st-gps", "st-esim"].forEach(function (i) {
+      document.getElementById(i).textContent = "?";
+    });
+  });
+}
+
+function toggle(action, v) {
+  callJson(action, v).then(function (r) {
+    toast(r.ok ? action + " is now " + v : "Failed: " + (r.error || "unknown error"));
+    loadStatus();
+  }).catch(function (e) { toast("Failed: " + e); });
+}
+function toggleEsim(v) {
+  callJson("esim", v).then(function (r) {
+    toast(r.ok ? "eSIM daemon is now " + v : "Failed: " + (r.error || "unknown error"));
+    loadStatus();
+  }).catch(function (e) { toast("Failed: " + e); });
+}
+function setOpt(name, v) {
+  callJson("set-option", name, String(v)).then(function (r) {
+    toast(r.ok ? name + " is now " + (v ? "on" : "off") : "Failed");
+    loadStatus();
+  }).catch(function (e) { toast("Failed: " + e); });
+}
+/* Which device the new IMEI should claim to be. Default is the whole pool;
+   narrowing it is an operator choice, so the consequences are spelled out
+   next to the control rather than left to the readme. */
+var CLAIM_NOTE = {
+  "": "claims a random device from the pool",
+  "type|hotspot": "portable hotspot: same device class, bands unverified",
+  "type|phone": "phone: bigger crowd, and its bands are verified",
+  "native": "GL.iNet: coherent, but the prefix links every session"
+};
+
+function claimNote() {
+  var v = document.getElementById("claim").value;
+  document.getElementById("claim-note").textContent =
+    CLAIM_NOTE[v] || ("claims a " + v.split("|")[1] + " device");
+}
+
+function loadPool() {
+  var sel = document.getElementById("claim");
+  call("tac-pool").then(function (txt) {
+    /* Build both lists from what the pool actually contains: offering a device
+       class the pool no longer has would hand the operator a filter that
+       matches nothing. */
+    var brands = {}, types = {};
+    txt.trim().split(/\s+/).forEach(function (row) {
+      var p = row.split("|");
+      if (p.length === 3 && p[0] !== "glinet") {
+        brands[p[0]] = (brands[p[0]] || 0) + 1;
+        types[p[1]] = (types[p[1]] || 0) + 1;
+      }
+    });
+    var html = '<option value="">Any device (recommended)</option>';
+    if (Object.keys(types).length > 1) {
+      Object.keys(types).sort().forEach(function (t) {
+        html += '<option value="type|' + t + '">' + t + " (" + types[t] + ")</option>";
+      });
+    }
+    Object.keys(brands).sort().forEach(function (b) {
+      html += '<option value="brand|' + b + '">' + b + " (" + brands[b] + ")</option>";
+    });
+    html += '<option value="native">GL.iNet (this device type)</option>';
+    sel.innerHTML = html;
+  }).catch(function () {
+    sel.innerHTML = '<option value="">Any device</option>';
+  });
+}
+
+function oled(action, btn) {
+  btn.disabled = true;
+  callJson(action).then(function (r) {
+    toast(r.ok ? (action === "oled" ? "Sent to the front panel" : "Front panel cleared")
+               : "Failed");
+    btn.disabled = false;
+  }).catch(function (e) { toast("Failed: " + e); btn.disabled = false; });
+}
+
+function randomImei(btn) {
+  var v = document.getElementById("claim").value;
+  var parts = v ? v.split("|") : [];
+  btn.disabled = true;
+  call("random-imei", parts[0], parts[1]).then(function (res) {
+    var m = res.match(/\b\d{15}\b/);
+    toast(m ? "IMEI set to " + m[0] : "IMEI set");
+    btn.disabled = false;
+    loadStatus();
+  }).catch(function (e) { toast("Failed: " + e); btn.disabled = false; });
+}
+function loadLog() {
+  callJson("at-log").then(function (r) {
+    document.getElementById("atlog").textContent =
+      (r.lines && r.lines.length) ? r.lines.join("\n")
+                                  : "empty — no modem setting has been changed since boot";
+  }).catch(function (e) {
+    document.getElementById("atlog").textContent = "";
+    document.getElementById("atlog").innerHTML = '<span class="err">' + errHtml(e) + "</span>";
+  });
+}
+
+/* Two stages, mirroring the CLI. Stage 1 kills the radio and burns the old
+   IMEI; stage 2 runs the reset cycle, sets the IMEI the new SIM will be seen
+   with, then wipes logs, re-hardens GPS and flushes DNS. */
+function swapFail(e) {
+  document.getElementById("swap-body").innerHTML +=
+    '<p class="err">' + errHtml(e) + "</p>"
+    + '<div class="actions"><button onclick="swapClose()">Close</button></div>';
+}
+function simSwap() {
+  document.getElementById("swap-back").className = "modal-back open";
+  document.getElementById("swap-body").innerHTML =
+    '<div class="step" id="sw1"><span class="num">1</span>'
+    + "<span>Turning the radio off and setting a throwaway IMEI…</span></div>";
+
+  callJson("sim-swap", "begin").then(function (r) {
+    if (!r.ok) throw (r.error || "stage 1 failed");
+    var s = document.getElementById("sw1");
+    s.className = "step done";
+    s.innerHTML = '<span class="num">1</span><span>Radio off, throwaway IMEI '
+      + esc(r.imei) + "</span>";
+    document.getElementById("swap-body").innerHTML +=
+      '<p class="warn">Swap the SIM card now.</p>'
+      + '<p style="font-size:13px">Then set the real IMEI: '
+      + '<label class="pick"><input type="radio" name="swmode" value="random" checked> random</label>'
+      + '<label class="pick"><input type="radio" name="swmode" value="deterministic"> tied to the new SIM</label></p>'
+      + '<div class="actions">'
+      + '<button class="go" onclick="swapFinish(this)">SIM swapped, continue</button>'
+      + '<button onclick="swapClose()">Cancel</button></div>';
+  }).catch(swapFail);
+}
+function swapFinish(btn) {
+  var body = document.getElementById("swap-body");
+  var mode = "random", radios = document.getElementsByName("swmode");
+  for (var i = 0; i < radios.length; i++) if (radios[i].checked) mode = radios[i].value;
+  btn.disabled = true;
+  body.innerHTML += '<div class="step" id="sw2"><span class="num">2</span>'
+    + "<span>Resetting the modem, reading the new SIM, setting the IMEI, wiping logs…</span></div>";
+
+  callJson("sim-swap", "finish", mode).then(function (r) {
+    if (!r.ok) throw (r.error || "stage 2 failed");
+    var s = document.getElementById("sw2");
+    s.className = "step done";
+    s.innerHTML = '<span class="num">2</span><span>Modem reset, logs wiped, '
+      + "GPS re-hardened, DNS flushed</span>";
+    body.innerHTML +=
+      '<p class="imei">IMEI ' + esc(r.imei) + "<br>IMSI " + esc(r.imsi) + "</p>"
+      + (r.slow_reset
+          ? '<p class="warn">The reset cycle ran long. The previous identity may '
+            + "have been briefly visible to the network.</p>" : "")
+      + '<p class="warn">Move to another location before booting again.</p>'
+      + '<div class="actions">'
+      + '<button class="go" onclick="swapRestart(this)">Restart modem</button>'
+      + '<button onclick="swapShutdown(this)">Shut down</button>'
+      + '<button onclick="swapClose()">Close</button></div>';
+  }).catch(swapFail);
+}
+function swapClose() {
+  document.getElementById("swap-back").className = "modal-back";
+  loadStatus();
+}
+function swapRestart(btn) {
+  btn.disabled = true;
+  call("shutdown-modem").then(function () {
+    toast("Modem restarting with the new IMEI");
+    swapClose();
+  }).catch(function (e) { toast("Failed: " + e); btn.disabled = false; });
+}
+function swapShutdown(btn) {
+  btn.disabled = true;
+  call("shutdown").then(function () { toast("Shutting down"); })
+    .catch(function (e) { toast("Failed: " + e); btn.disabled = false; });
+}
+
+loadStatus();
+loadLog();
+loadPool();
+</script>
+</body>
+</html>

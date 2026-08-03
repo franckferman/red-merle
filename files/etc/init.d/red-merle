@@ -1,0 +1,72 @@
+#!/bin/sh /etc/rc.common
+
+. /lib/red-merle/functions.sh
+
+# We intend to be started before the first network-related service is started.
+# According to https://openwrt.org/docs/techref/initscripts, /etc/rc.d/ determines
+# the order of the services to be started (or stopped). The lower the number,
+# the earlier the service is started.
+# We observe "repeater" having the value 15. "network" 20. We certainly want to ahead of those.
+START=10
+STOP=99
+
+start() {
+	printf '{"msg": "RED MERLE - securing..."}\n' > /dev/ttyS0
+	msg="RED MERLE:"
+	if [ "$(GET_CONFIG_OPTION iptables_block 1)" = "1" ]; then
+		APPLY_VOLATILE_STORAGE
+		START_AGGRESSIVE_LOG_WIPE
+		APPLY_ESIM_LPA_POLICY
+		SETUP_IPTABLES_BLOCKING
+		msg="$msg + Network blocked"
+	else
+		msg="$msg - Network block"
+	fi
+	if [ "$(GET_CONFIG_OPTION wipe_logs 1)" = "1" ]; then
+		WIPE_LOGS
+		msg="$msg + Logs wiped"
+	else
+		msg="$msg - Log wipe"
+	fi
+	if [ "$(GET_CONFIG_OPTION randomize_mac 1)" = "1" ]; then
+		RANDOMIZE_MACADDR
+		msg="$msg + MAC random"
+	else
+		msg="$msg - MAC random"
+	fi
+	if [ "$(GET_CONFIG_OPTION randomize_bssid 1)" = "1" ]; then
+		RESET_BSSIDS
+		msg="$msg + BSSID random"
+	else
+		msg="$msg - BSSID random"
+	fi
+	printf "{\"msg\": \"%s\"}\n" "$msg" > /dev/ttyS0
+	# GPS hardening needs the modem, which is not up yet at START=10.
+	# Run it in a backgrounded subshell so boot does not block on the modem.
+	# On timeout we leave a sentinel and report honestly on the OLED;
+	# hardening is retried on the next red-merle invocation
+	# (/usr/bin/red-merle re-runs DISABLE_CARRIER_GPS after every IMEI
+	# change and clears the sentinel).
+	# In stealth mode there is no AT hardening by design (invisibility),
+	# so there is nothing to wait for. gps_hardening=0 skips the AT
+	# suite even in hardening mode.
+	if [ "$(GET_HARDENING_MODE)" = "hardening" ] && [ "$(GET_CONFIG_OPTION gps_hardening 1)" = "1" ]; then
+		(
+			if WAIT_FOR_MODEM && DISABLE_CARRIER_GPS; then
+				rm -f /tmp/red-merle-gps-deferred
+				printf '{"msg": "GPS hardened"}\n' > /dev/ttyS0
+			else
+				touch /tmp/red-merle-gps-deferred
+				printf '{"msg": "GPS hardening deferred"}\n' > /dev/ttyS0
+			fi
+		) &
+	fi
+	sleep 2
+}
+
+stop() {
+	if [ "$(GET_CONFIG_OPTION wipe_logs 1)" = "1" ]; then
+		printf '{"msg": "Wiping logs..."}\n' > /dev/ttyS0
+		WIPE_LOGS
+	fi
+}

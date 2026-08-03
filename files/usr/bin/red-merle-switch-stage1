@@ -1,0 +1,58 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+. /lib/functions/gl_util.sh
+
+if [ ! -f "/tmp/sim_change_start" ]; then
+	echo 0 > /tmp/sim_change_start
+fi
+
+if [ ! -f "/tmp/sim_change_switch" ]; then
+	sim_switch off
+fi
+
+now=$(date +%s)
+sim_change_last=`cat /tmp/sim_change_start`
+sim_change_diff=$((now-sim_change_last))
+
+if [ "$sim_change_diff" -lt 60 ]; then
+	mcu_send_message "Rate limit: wait >60s between SIM swaps (${sim_change_diff}s elapsed)"
+	exit 1
+fi
+
+echo "$now" > /tmp/sim_change_start
+
+mcu_send_message "RED MERLE - SIM swap stage 1 of 2 (switch UP)"
+sleep 3
+
+mcu_send_message "Disabling RF radio..."
+sleep 1
+
+# stage2 runs as a separate process, so the IMSI has to travel through a file
+# rather than a shell variable: comparing an unset $old_imsi there meant the
+# "did you actually swap the SIM?" check could never fire.
+READ_IMSI > /tmp/red-merle-old-imsi 2>/dev/null
+
+answer=1
+while [ "$answer" -eq 1 ]; do
+	gl_modem AT AT+CFUN=4 | grep -q OK
+	if [ $? -eq 1 ]; then
+		mcu_send_message "RF disable failed, retrying..."
+		CHECK_ABORT
+	else
+		answer=0
+		mcu_send_message "RF disabled, setting temporary IMEI..."
+		sleep 1
+	fi
+done
+
+# Generate a random IMEI to prevent a leak of the
+# new SIM's IMSI under the old IMEI
+# 15s used to kill this mid-write: modem detection alone takes ~6s, the
+# write and read-back ~6s more, and the modem is slower right after a
+# CFUN cycle. That is why swaps reported "IMEI unchanged".
+timeout 60 python3 /lib/red-merle/imei_generate.py -r
+
+mcu_send_message "Temp IMEI set - swap the SIM now, then slide the switch back DOWN for stage 2"
+
+echo done > /tmp/red-merle-stage1

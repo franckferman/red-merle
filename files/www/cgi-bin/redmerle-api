@@ -1,0 +1,74 @@
+#!/bin/sh
+#
+# red-merle-api — JSON bridge between the GL panel dashboard and red-merle.
+# Serves /cgi-bin/redmerle-api?action=<a>[&arg=<x>][&arg2=<y>]
+# Requires a valid GL Admin-Token cookie (validated against gl-session).
+#
+# Every exit path MUST print a CGI header block (a Content-type line and an
+# empty line) before any body. Piping the libexec's bare output straight to
+# stdout makes fcgiwrap hand nginx a malformed response, and the browser gets
+# an HTML error page instead of JSON.
+#
+
+sid=$(echo "$HTTP_COOKIE" | tr ';' '\n' | sed -n 's/^ *Admin-Token=//p' | head -1)
+
+if [ -z "$sid" ] || ! ubus call gl-session session "{\"sid\":\"$sid\"}" 2>/dev/null | grep -q '"username"'; then
+	echo "Content-type: application/json"
+	echo "Status: 403 Forbidden"
+	echo ""
+	echo '{"ok":false,"error":"forbidden"}'
+	exit 0
+fi
+
+action=$(echo "$QUERY_STRING" | tr '&' '\n' | sed -n 's/^action=//p' | head -1)
+arg=$(echo "$QUERY_STRING" | tr '&' '\n' | sed -n 's/^arg=//p' | head -1)
+arg2=$(echo "$QUERY_STRING" | tr '&' '\n' | sed -n 's/^arg2=//p' | head -1)
+
+# The legacy rpcd actions answer in bare text, everything else in JSON.
+case "$action" in
+	read-imei|read-imsi|random-imei|shutdown|shutdown-modem)
+		echo "Content-type: text/plain; charset=utf-8" ;;
+	*)
+		echo "Content-type: application/json" ;;
+esac
+echo ""
+
+# Body only — the header block above is already out.
+emit() {
+	echo "$1"
+}
+
+case "$action" in
+	status|at-log|read-imei|read-imsi|tac-pool|oled|oled-clear)
+		/usr/libexec/red-merle "$action"
+		;;
+	random-imei)
+		/usr/libexec/red-merle random-imei "$arg" "$arg2"
+		;;
+	esim|sim-swap)
+		/usr/libexec/red-merle "$action" "$arg" "$arg2"
+		;;
+	shutdown|shutdown-modem)
+		# SIM swap flow. Destructive on purpose (powers the modem or the whole
+		# device down) and reachable only with a valid session — same exposure
+		# the LuCI dashboard already had.
+		/usr/libexec/red-merle "$action"
+		;;
+	lte-only|gps|hardening)
+		if [ "$arg" = "on" ] || [ "$arg" = "off" ]; then
+			/usr/libexec/red-merle "$action" "$arg"
+		else
+			emit '{"ok":false,"error":"bad arg"}'
+		fi
+		;;
+	set-option)
+		if [ -n "$arg" ] && { [ "$arg2" = "0" ] || [ "$arg2" = "1" ]; }; then
+			/usr/libexec/red-merle set-option "$arg" "$arg2"
+		else
+			emit '{"ok":false,"error":"bad args"}'
+		fi
+		;;
+	*)
+		emit '{"ok":false,"error":"unknown action"}'
+		;;
+esac

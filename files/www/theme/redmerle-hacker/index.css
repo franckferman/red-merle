@@ -1,0 +1,148 @@
+/* redmerle-hacker — CRT phosphor green theme for the GL 4.x panel.
+   Full semantic-layer re-hue of the stock dark theme: every surface
+   goes near-black green, accents go terminal green, plus a monospace
+   stack and a faint scanline overlay for the CRT feel. */
+:root {
+  /* ── primary: phosphor green ──────────────────────────────────── */
+  --primary: #00c853;
+  --primary-hover: #00963e;
+  --primary-disabled: #065f27;
+  --primary-background: #062012;
+
+  /* ── secondary: dim terminal gray-green ───────────────────────── */
+  --secondary: #4d8c5f;
+  --secondary-hover: #3d7049;
+  --secondary-disabled: #264a2f;
+  --secondary-background: #0d1f12;
+
+  /* ── error: hot red (kept for semantics) ──────────────────────── */
+  --error: #ff3b30;
+  --error-hover: #d92c22;
+  --error-disabled: #8c1d16;
+  --error-background: #3d100c;
+
+  /* ── info / success / warning ─────────────────────────────────── */
+  --info: #8fbc97;
+  --info-background: #1f4a2a;
+
+  --success: #39ff6a;
+  --success-background: #0d2f16;
+
+  --warning: #d9c93b;
+  --warning-background: #33300e;
+
+  /* ── text hierarchy: phosphor tints ───────────────────────────── */
+  --text-header: #d0ffd9;
+  --text-nav: #6fdc8a;
+  --text-title: #b3f0c0;
+  --text-subtitle: #93d8a3;
+  --text-strong: #e6ffec;
+  --text-regular: #a0dbae;
+  --text-weak: #5f9c6e;
+  --text-hint: #3d6b48;
+  --text-disabled: #3d6b48;
+  --text-badge: #b3f0c0;
+
+  /* ── backgrounds: near-black greens ───────────────────────────── */
+  --background-main: #030603;
+  --background-header: #081408;
+  --background-content: #060d06;
+  --background-card: #0a140b;
+  --background-title: #050b05;
+  --background-subtitle: #0f1f12;
+  --background-collapse: #0d1f10;
+  --background-controller: #b3f0c0;
+  --background-disabled: #264a2f;
+  --background-badge: #2e6e3f;
+
+  --border: #1c4026;
+  --divider: #0f240f;
+
+  --shadow: #020502;
+  --mask: rgba(4, 12, 6, 0.45);
+  --ssid-background: rgba(40, 160, 80, 0.22);
+
+  /* logo */
+  --logo: #6fdc8a;
+
+  /* ── left navigation ──────────────────────────────────────────── */
+  --text-menu: #93d8a3;
+  --text-menu-hover: #e6ffec;
+  --text-menu-active: #39ff6a;
+  --background-menu: #081208;
+  --background-submenu: #050b05;
+
+  /* ── actionable icons ─────────────────────────────────────────── */
+  --icon: #a0dbae;
+  --icon-hover: #2e6e3f;
+  --icon-active: #e6ffec;
+  --icon-disabled: #3d6b48;
+
+  /* ── status panel ─────────────────────────────────────────────── */
+  --text-status-panel: #5f9c6e;
+  --text-status-panel-active: #39ff6a;
+  --text-status-panel-hover: #e6ffec;
+  --text-status-panel-active-hover: #00c853;
+
+  /* status panel + login: deep green radial instead of the blue one */
+  --background-status-panel: radial-gradient(
+    circle,
+    rgba(8, 40, 18, 1) 28%,
+    rgba(3, 10, 5, 1) 86%,
+    rgba(5, 16, 8, 1) 110%
+  );
+  --background-login: radial-gradient(
+    circle,
+    rgba(8, 40, 18, 1) 28%,
+    rgba(3, 10, 5, 1) 86%,
+    rgba(5, 16, 8, 1) 110%
+  );
+
+  /* scrollbars */
+  --menu-scrollbar: rgba(57, 255, 106, 0.3);
+  --menu-scrollbar-hover: rgba(57, 255, 106, 0.5);
+  --scrollbar: rgba(57, 255, 106, 0.3);
+  --scrollbar-hover: rgba(57, 255, 106, 0.5);
+}
+
+/* CRT dressing: monospace everywhere it is safe, subtle scanlines. */
+/* CSS falls back per glyph, so Latin keeps the mono face while CJK drops to
+   the first family that actually has the glyph. Without these the language
+   picker rendered 简体中文 / 日本語 / 한국어 as empty boxes: none of the mono
+   faces above ship CJK, and the generic monospace maps to DejaVu Sans Mono. */
+body {
+  font-family: "JetBrains Mono", "DejaVu Sans Mono", "Courier New",
+    "Noto Sans Mono CJK SC", "Noto Sans CJK SC", "Source Han Sans SC",
+    "Microsoft YaHei", "PingFang SC", "Hiragino Sans", "Meiryo",
+    "Malgun Gothic", monospace, sans-serif;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.10) 0px,
+    rgba(0, 0, 0, 0.10) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
+/* phosphor glow on headings and brand */
+.header-title, .brand, h1, h2, h3 {
+  text-shadow: 0 0 6px rgba(57, 255, 106, 0.35);
+}
+
+/* Flash donut: keep the track ring visible, shrink the center total so
+   the monospace stack does not overflow the ring */
+.flash-icon > svg .base {
+  stroke: #12331a !important;
+}
+
+.flash-icon .total .count {
+  font-size: 13px !important;
+}

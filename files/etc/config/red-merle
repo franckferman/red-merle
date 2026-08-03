@@ -1,0 +1,23 @@
+config settings 'settings'
+	option hardening_mode 'stealth'
+	option auto_detect_modem '1'
+	option persistent_iptables '1'
+	# Boot behavior toggles (1 = enabled, 0 = disabled).
+	# Defaults match the classic red-merle behavior.
+	option wipe_logs '1'		# WIPE_LOGS at boot/shutdown and after each IMEI change
+	option randomize_mac '1'	# RANDOMIZE_MACADDR at boot (upstream + AP MAC)
+	option randomize_bssid '1'	# RESET_BSSIDS at boot (WiFi BSSIDs)
+	option iptables_block '1'	# SETUP_IPTABLES_BLOCKING (SUPL/OMA-DM port blocks)
+	option gps_hardening '1'	# backgrounded AT GPS hardening at boot (hardening mode only)
+	# GL's eSIM LPA daemon phones home and caches the IMEI on disk.
+	# 1 = stop and disable it at boot (only useful if you never use eSIM).
+	option disable_esim_lpa '0'
+	# Volatile storage: keep runtime data off the flash. / is an overlay
+	# over UBIFS, where deleting does not reliably destroy anything.
+	option volatile_history '1'	# shell history to RAM (no downside)
+	option volatile_esim '0'	# eSIM daemon state to RAM — ALSO makes
+				# eSIM profiles volatile, hence off by default
+	# Logs already live in RAM only. This wipes them during the session too,
+	# which also destroys your ability to investigate a live compromise.
+	option aggressive_log_wipe '0'
+	option log_wipe_interval '300'	# seconds, minimum 30

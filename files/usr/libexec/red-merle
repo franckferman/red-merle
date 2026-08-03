@@ -1,0 +1,347 @@
+#!/bin/sh
+
+. /lib/red-merle/functions.sh
+
+
+show_message() {
+    # One line, always. Verified on the panel: the MCU wraps long strings by
+    # itself, a literal backslash-n shows up as two characters, and a real
+    # newline makes the JSON invalid so the message is dropped entirely and the
+    # screen keeps whatever it displayed before. Any separator the callers pass
+    # is folded back to a space here rather than trusted.
+    printf '{"msg": "%s"}\n' "$(printf '%s' "$1" | tr -s '\n\r\t' '   ')" > /dev/ttyS0
+}
+
+
+# ── JSON dashboard actions (LuCI control dashboard) ───────────────────
+# Same query logic as red-merle-ctl; busybox ash has no jq, so JSON is
+# emitted with printf. All modem-derived values pass through json_sanitize.
+
+CONFIG_OPTIONS="wipe_logs randomize_mac randomize_bssid iptables_block gps_hardening volatile_history volatile_esim aggressive_log_wipe disable_esim_lpa"
+
+MODEM_MODEL=""
+
+detect() {
+	MODEM_MODEL=$(DETECT_MODEM_MODEL)
+}
+
+# Query the modem and print the raw response.
+atq() {
+	gl_modem AT "$1" 2>&1
+}
+
+# Keep only JSON-safe characters (alnum/+/:,/-/. and spaces) from AT responses.
+json_sanitize() {
+	printf '%s' "$1" | tr -cd 'A-Za-z0-9+:/., _-'
+}
+
+# LTE-only state: prints "on", "off" or "unknown"
+lte_only_state() {
+	case "$MODEM_MODEL" in
+		EP06|EC25)
+			atq 'AT+QCFG="nwscanmode"' | grep -q '"nwscanmode",3' && echo on || echo off ;;
+		EM060K|EM05)
+			atq 'AT+QNWPREFCFG="mode_pref"' | grep -qi '"mode_pref",LTE' && echo on || echo off ;;
+		*)
+			echo unknown ;;
+	esac
+}
+
+# GNSS state: prints "on" or "off"
+gnss_state() {
+	atq 'AT+QGPS?' | grep -q '+QGPS: 1' && echo on || echo off
+}
+
+# Boot option as a bare JSON number (defaults to 1 like red-merle-ctl)
+opt_num() {
+	loc_val=$(GET_CONFIG_OPTION "$1" "$(OPT_DEFAULT "$1")")
+	case "$loc_val" in
+		0|1) printf '%s' "$loc_val" ;;
+		*)   printf '1' ;;
+	esac
+}
+
+
+if [ "$1" = "read-imei" ]; then
+    imei="$(READ_IMEI)"
+    echo -n  $imei
+    show_message "IMEI ${imei}"
+
+elif [ "$1" = "read-imsi" ]; then
+    imsi="$(READ_IMSI)"
+    if [ "x$imsi" = "x" ]; then
+        echo "No IMSI found $imsi" >&2
+        exit 1
+    else
+        echo -n  $imsi
+        show_message "IMSI ${imsi}"
+    fi
+
+elif [ "$1" = "oled" ]; then
+    # Push the current identity to the front panel on request. The MCU keeps
+    # showing the last message it was sent until something replaces it, so this
+    # is deliberate rather than incidental: nothing writes to the screen unless
+    # an operator asks, or a swap is under way.
+    loc_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+    loc_net=$(atq 'AT+QNWINFO' | tr -d '\r' | grep '+QNWINFO' | cut -d, -f1 | cut -d'"' -f2)
+    show_message "IMEI ${loc_imei:-unknown} / ${loc_net:-no service}"
+    printf '{"ok":true,"shown":"%s"}\n' "$(json_sanitize "$loc_imei")"
+
+elif [ "$1" = "oled-clear" ]; then
+    # The panel keeps the last custom message until something replaces it, and
+    # sending a blank one just replaces it with a blank. `mcu reload` restarts
+    # the daemon's screen timer, which is what the physical button effectively
+    # does, so the normal rotation comes back.
+    if ubus call mcu reload >/dev/null 2>&1; then
+        echo '{"ok":true,"method":"mcu reload"}'
+    else
+        show_message " "
+        echo '{"ok":true,"method":"blank message"}'
+    fi
+
+elif [ "$1" = "tac-pool" ]; then
+    # Inventory for the dashboard's device-claim picker.
+    # Model names contain spaces, so match on the leading TAC rather than on
+    # the field count.
+    /lib/red-merle/imei_generate.py --list-pool 2>/dev/null | \
+        awk '$1 ~ /^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$/ {printf "%s|%s|%s ", $2, $3, $1}'
+
+elif [ "$1" = "random-imei" ]; then
+    show_message "Generating new IMEI..."
+    # $2/$3 optionally narrow the pool: brand, type or model.
+    loc_filter=""
+    case "$2" in
+        brand) [ -n "$3" ] && loc_filter="--brand $3" ;;
+        type)  [ -n "$3" ] && loc_filter="--type $3" ;;
+        model) [ -n "$3" ] && loc_filter="--model $3" ;;
+        native) loc_filter="--native" ;;
+    esac
+    # shellcheck disable=SC2086 -- filter is a fixed, validated pair
+    # 60s, not 15: modem detection alone is ~6s, the write and read-back ~6s
+    # more, and the modem is slower right after a CFUN cycle. Every IMEI path
+    # used to be killed mid-write, which is what "IMEI unchanged" meant.
+    flock -n /tmp/red-merle-imei-generate.lock  timeout 60  /lib/red-merle/imei_generate.py --random $loc_filter
+    new_imei=$(READ_IMEI)
+    echo -n $new_imei
+    show_message "IMEI set ${new_imei}"
+
+elif [ "$1" = "shutdown-modem" ]; then
+    show_message "Disabling RF radio..."
+    exec gl_modem AT AT+CFUN=4
+
+elif [ "$1" = "shutdown" ]; then
+    show_message "Securing: wiping logs"
+    WIPE_LOGS
+    FLUSH_DNS
+    show_message "All clean, shutting down..."
+    sleep 1
+    echo '{ "poweroff": "1" }' > /dev/ttyS0
+
+elif [ "$1" = "status" ]; then
+    detect
+    loc_fw=$(atq 'AT+CGMR' | tr -d '\r' | grep -vE '^(OK|$)' | head -1)
+    loc_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+    loc_imsi=$(atq 'AT+CIMI' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+    loc_number=$(atq 'AT+CNUM' | tr -d '\r' | grep '+CNUM' | cut -d, -f2 | tr -d '"' | head -1)
+    loc_sim=$(atq 'AT+CPIN?' | tr -d '\r' | grep '+CPIN' | cut -d' ' -f2-)
+    loc_reg=$(atq 'AT+CEREG?' | tr -d '\r' | grep '+CEREG' | head -1)
+    loc_csq=$(atq 'AT+CSQ' | tr -d '\r' | grep '+CSQ' | cut -d' ' -f2)
+    loc_net=$(atq 'AT+QNWINFO' | tr -d '\r' | grep '+QNWINFO' | cut -d' ' -f2-)
+    loc_hmode=$(GET_HARDENING_MODE)
+    loc_lte=$(lte_only_state)
+    loc_gnss=$(gnss_state)
+    if iptables -C OUTPUT -p tcp --dport 7275 -j DROP >/dev/null 2>&1; then
+        loc_supl=active
+    else
+        loc_supl=inactive
+    fi
+    printf '{"modem_model":"%s","modem_fw":"%s","imei":"%s","imsi":"%s","number":"%s","sim":"%s","registration":"%s","signal":"%s","network":"%s","hardening_mode":"%s","lte_only":"%s","gnss":"%s","supl_block":"%s","esim_imei":"%s","esim_lpa":"%s","opts":{"wipe_logs":%s,"randomize_mac":%s,"randomize_bssid":%s,"iptables_block":%s,"gps_hardening":%s,"volatile_history":%s,"volatile_esim":%s,"aggressive_log_wipe":%s,"disable_esim_lpa":%s}}\n' \
+        "$(json_sanitize "$MODEM_MODEL")" \
+        "$(json_sanitize "$loc_fw")" \
+        "$(json_sanitize "$loc_imei")" \
+        "$(json_sanitize "$loc_imsi")" \
+        "$(json_sanitize "$loc_number")" \
+        "$(json_sanitize "$loc_sim")" \
+        "$(json_sanitize "$loc_reg")" \
+        "$(json_sanitize "$loc_csq")" \
+        "$(json_sanitize "$loc_net")" \
+        "$(json_sanitize "$loc_hmode")" \
+        "$(json_sanitize "$loc_lte")" \
+        "$(json_sanitize "$loc_gnss")" \
+        "$(json_sanitize "$loc_supl")" \
+        "$(json_sanitize "$(ESIM_CACHED_IMEI)")" \
+        "$(ESIM_LPA_STATE)" \
+        "$(opt_num wipe_logs)" \
+        "$(opt_num randomize_mac)" \
+        "$(opt_num randomize_bssid)" \
+        "$(opt_num iptables_block)" \
+        "$(opt_num gps_hardening)" \
+        "$(opt_num volatile_history)" \
+        "$(opt_num volatile_esim)" \
+        "$(opt_num aggressive_log_wipe)" \
+        "$(opt_num disable_esim_lpa)"
+
+elif [ "$1" = "set-option" ]; then
+    loc_name="$2"
+    loc_value="$3"
+    loc_valid=0
+    for loc_opt in $CONFIG_OPTIONS; do
+        [ "$loc_opt" = "$loc_name" ] && loc_valid=1
+    done
+    if [ "$loc_valid" != "1" ]; then
+        echo '{"ok":false,"error":"unknown option"}'
+    elif [ "$loc_value" != "0" ] && [ "$loc_value" != "1" ]; then
+        echo '{"ok":false,"error":"value must be 0 or 1"}'
+    elif uci set "red-merle.settings.$loc_name=$loc_value" && uci commit red-merle; then
+        echo '{"ok":true}'
+    else
+        echo '{"ok":false,"error":"uci failed"}'
+    fi
+
+elif [ "$1" = "lte-only" ]; then
+    detect
+    case "$2" in
+        on)
+            case "$MODEM_MODEL" in
+                EP06|EC25)   AT_SEND 'AT+QCFG="nwscanmode",3,1' ;;
+                EM060K|EM05) AT_SEND 'AT+QNWPREFCFG="mode_pref",LTE' ;;
+                *)           AT_SEND 'AT+QCFG="nwscanmode",3,1' || AT_SEND 'AT+QNWPREFCFG="mode_pref",LTE' ;;
+            esac && echo '{"ok":true,"lte_only":"on"}' || echo '{"ok":false,"error":"AT command failed"}' ;;
+        off)
+            case "$MODEM_MODEL" in
+                EP06|EC25)   AT_SEND 'AT+QCFG="nwscanmode",0,1' ;;
+                EM060K|EM05) AT_SEND 'AT+QNWPREFCFG="mode_pref",AUTO' ;;
+                *)           AT_SEND 'AT+QCFG="nwscanmode",0,1' || AT_SEND 'AT+QNWPREFCFG="mode_pref",AUTO' ;;
+            esac && echo '{"ok":true,"lte_only":"off"}' || echo '{"ok":false,"error":"AT command failed"}' ;;
+        *)
+            echo '{"ok":false,"error":"usage: lte-only on|off"}' ;;
+    esac
+
+elif [ "$1" = "gps" ]; then
+    case "$2" in
+        on)  AT_SEND 'AT+QGPS=1'  && echo '{"ok":true,"gnss":"on"}'  || echo '{"ok":false,"error":"AT command failed"}' ;;
+        off) AT_SEND 'AT+QGPSEND' && echo '{"ok":true,"gnss":"off"}' || echo '{"ok":false,"error":"AT command failed"}' ;;
+        *)   echo '{"ok":false,"error":"usage: gps on|off"}' ;;
+    esac
+
+elif [ "$1" = "hardening" ]; then
+    case "$2" in
+        on)
+            uci set red-merle.settings.hardening_mode='hardening'
+            uci commit red-merle
+            if DISABLE_CARRIER_GPS; then
+                echo '{"ok":true,"hardening_mode":"hardening"}'
+            else
+                echo '{"ok":false,"error":"mode set but some AT commands failed"}'
+            fi ;;
+        off)
+            uci set red-merle.settings.hardening_mode='stealth'
+            uci commit red-merle
+            if REVERT_CARRIER_HARDENING; then
+                echo '{"ok":true,"hardening_mode":"stealth"}'
+            else
+                echo '{"ok":false,"error":"mode set but revert had failures"}'
+            fi ;;
+        *)
+            echo '{"ok":false,"error":"usage: hardening on|off"}' ;;
+    esac
+
+elif [ "$1" = "at-log" ]; then
+    if [ -f "$AT_LOG" ]; then
+        loc_lines=$(tail -n 40 "$AT_LOG" | tr -d '\r' | tr '\t' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g; s/.*/"&",/')
+        loc_lines=${loc_lines%,}
+        printf '{"lines":[%s]}\n' "$loc_lines"
+    else
+        echo '{"lines":[]}'
+    fi
+
+elif [ "$1" = "esim" ]; then
+    # GL's eSIM LPA daemon. On a device whose firmware does not declare the
+    # esim_support capability the panel hides the eSIM page entirely, yet the
+    # daemon still runs with syncMode:on and caches the IMEI on disk.
+    case "$2" in
+        on)
+            uci set red-merle.settings.disable_esim_lpa=0 && uci commit red-merle
+            /etc/init.d/esim_lpa enable >/dev/null 2>&1
+            /etc/init.d/esim_lpa start >/dev/null 2>&1
+            echo '{"ok":true,"esim_lpa":"on"}' ;;
+        off)
+            uci set red-merle.settings.disable_esim_lpa=1 && uci commit red-merle
+            /etc/init.d/esim_lpa stop >/dev/null 2>&1
+            /etc/init.d/esim_lpa disable >/dev/null 2>&1
+            echo '{"ok":true,"esim_lpa":"off"}' ;;
+        status|'')
+            printf '{"ok":true,"esim_lpa":"%s","esim_imei":"%s","modem_imei":"%s"}\n' \
+                "$(ESIM_LPA_STATE)" \
+                "$(json_sanitize "$(ESIM_CACHED_IMEI)")" \
+                "$(json_sanitize "$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)")" ;;
+        sync)
+            loc_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+            if [ -n "$loc_imei" ] && SYNC_ESIM_IMEI "$loc_imei"; then
+                printf '{"ok":true,"esim_imei":"%s"}\n' "$loc_imei"
+            else
+                echo '{"ok":false,"error":"could not read the modem IMEI"}'
+            fi ;;
+        *)
+            echo '{"ok":false,"error":"usage: esim on|off|status|sync"}' ;;
+    esac
+
+elif [ "$1" = "sim-swap" ]; then
+    # The full CLI sequence, split in two so a web client can drive it: the
+    # LuCI modal only ever did CFUN=4 + one IMEI, skipping the reset cycle,
+    # the post-swap IMEI pass and the log/GPS/DNS cleanup.
+    case "$2" in
+        begin)
+            show_message "Disabling RF radio..."
+            gl_modem AT AT+CFUN=4 >/dev/null 2>&1
+            flock -n /tmp/red-merle-imei-generate.lock \
+                timeout 60 /lib/red-merle/imei_generate.py --random >/dev/null 2>&1
+            loc_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+            show_message "Swap the SIM now"
+            printf '{"ok":true,"stage":"begin","imei":"%s"}\n' "$(json_sanitize "$loc_imei")"
+            ;;
+        finish)
+            # Bounded retries: the CLI loops forever, a web request must not.
+            loc_leak=0
+            loc_i=0
+            while [ "$loc_i" -lt 10 ]; do
+                gl_modem AT AT+CFUN=0 2>/dev/null | grep -q OK && break
+                loc_i=$((loc_i + 1)); sleep 1
+            done
+            loc_i=0
+            while [ "$loc_i" -lt 10 ]; do
+                gl_modem AT AT+CFUN=4 2>/dev/null | grep -q OK && break
+                loc_leak=1; loc_i=$((loc_i + 1)); sleep 1
+            done
+            sleep 1
+            loc_imsi=$(atq 'AT+CIMI' | tr -d '\r' | grep -oE '[0-9]{6,15}' | head -1)
+            # Second pass: in deterministic mode the IMEI is seeded by the IMSI,
+            # so it MUST be generated after the new SIM is in.
+            case "$3" in
+                deterministic) loc_mode=--deterministic ;;
+                *)             loc_mode=--random ;;
+            esac
+            flock -n /tmp/red-merle-imei-generate.lock \
+                timeout 60 /lib/red-merle/imei_generate.py "$loc_mode" >/dev/null 2>&1
+            loc_imei=$(atq 'AT+GSN' | tr -d '\r' | grep -oE '[0-9]{15}' | head -1)
+            if [ -n "$loc_imei" ]; then
+                mkdir -p /tmp/modem.1-1.2
+                echo "$loc_imei" > /tmp/modem.1-1.2/modem-imei
+            fi
+            WIPE_LOGS
+            DISABLE_CARRIER_GPS
+            rm -f /tmp/red-merle-gps-deferred
+            FLUSH_DNS
+            show_message "Swap done, IMEI ${loc_imei}"
+            printf '{"ok":true,"stage":"finish","imei":"%s","imsi":"%s","slow_reset":%s}\n' \
+                "$(json_sanitize "$loc_imei")" \
+                "$(json_sanitize "$loc_imsi")" \
+                "$loc_leak"
+            ;;
+        *)
+            echo '{"ok":false,"error":"usage: sim-swap begin|finish [random|deterministic]"}' ;;
+    esac
+
+else
+    echo 0
+fi

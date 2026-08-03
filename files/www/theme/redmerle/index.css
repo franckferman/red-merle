@@ -1,0 +1,128 @@
+/* redmerle — dark crimson "classified dossier" theme for the GL 4.x panel.
+   Full semantic-layer re-hue of the stock dark theme: purple backgrounds
+   become warm near-black reds, the blue primary chain becomes crimson,
+   teal secondary becomes ember, menu/status accents become red. */
+:root {
+  /* ── primary: crimson ─────────────────────────────────────────── */
+  --primary: #d9261a;
+  --primary-hover: #b01f14;
+  --primary-disabled: #6e150d;
+  --primary-background: #2b1210;
+
+  /* ── secondary: burnt ember ───────────────────────────────────── */
+  --secondary: #a8573a;
+  --secondary-hover: #8c4630;
+  --secondary-disabled: #5c2e20;
+  --secondary-background: #33190f;
+
+  /* ── error: bright arterial red ───────────────────────────────── */
+  --error: #ff3b30;
+  --error-hover: #d92c22;
+  --error-disabled: #8c1d16;
+  --error-background: #3d100c;
+
+  /* ── info / success / warning ─────────────────────────────────── */
+  --info: #b9a5a0;
+  --info-background: #6e3a52;
+
+  --success: #4caf7d;
+  --success-background: #12331f;
+
+  --warning: #d9a13b;
+  --warning-background: #3d2a0e;
+
+  /* ── text hierarchy: warm off-whites ──────────────────────────── */
+  /* top bar title */
+  --text-header: #f0e4e1;
+  /* page titles, breadcrumbs */
+  --text-nav: #e3b8b0;
+  /* card titles, tabs */
+  --text-title: #e8d5d0;
+  /* group subtitles */
+  --text-subtitle: #d9c4be;
+  /* important content */
+  --text-strong: #faf3f1;
+  /* parameter values, input content */
+  --text-regular: #c9b8b3;
+  /* parameter names, icons */
+  --text-weak: #9c857f;
+  /* input placeholders */
+  --text-hint: #6e5a55;
+  --text-disabled: #6f5b56;
+  --text-badge: #e8d5d0;
+
+  /* ── backgrounds: warm near-black reds ────────────────────────── */
+  /* page base */
+  --background-main: #0a0708;
+  /* top header bar */
+  --background-header: #1c0e11;
+  /* page content */
+  --background-content: #120b0d;
+  /* cards */
+  --background-card: #1a1114;
+  /* card titles, tabs */
+  --background-title: #100a0c;
+  /* group subtitles */
+  --background-subtitle: #2a1a1e;
+  /* expanded panels */
+  --background-collapse: #241619;
+  /* switches, toggles */
+  --background-controller: #e8d5d0;
+  --background-disabled: #4a3532;
+  --background-badge: #6e463f;
+
+  --border: #4a2c28;
+  --divider: #241416;
+
+  --shadow: #0d0507;
+  --mask: rgba(20, 8, 10, 0.4);
+  --ssid-background: rgba(140, 70, 60, 0.24);
+
+  /* logo */
+  --logo: #e3b8b0;
+
+  /* ── left navigation ──────────────────────────────────────────── */
+  --text-menu: #d9c4be;
+  --text-menu-hover: #faf3f1;
+  --text-menu-active: #ff5340;
+  --background-menu: #160d10;
+  --background-submenu: #100a0c;
+
+  /* ── actionable icons ─────────────────────────────────────────── */
+  --icon: #c9b8b3;
+  --icon-hover: #6e463f;
+  --icon-active: #faf3f1;
+  --icon-disabled: #6f5b56;
+
+  /* ── status panel ─────────────────────────────────────────────── */
+  --text-status-panel: #9c857f;
+  --text-status-panel-active: #ff5340;
+  --text-status-panel-hover: #faf3f1;
+  --text-status-panel-active-hover: #d9261a;
+
+  /* status panel + login: deep red radial instead of the blue one */
+  --background-status-panel: radial-gradient(
+    circle,
+    rgba(69, 16, 20, 1) 28%,
+    rgba(24, 7, 10, 1) 86%,
+    rgba(30, 10, 13, 1) 110%
+  );
+  --background-login: radial-gradient(
+    circle,
+    rgba(69, 16, 20, 1) 28%,
+    rgba(24, 7, 10, 1) 86%,
+    rgba(30, 10, 13, 1) 110%
+  );
+
+  /* scrollbars */
+  --menu-scrollbar: rgba(200, 90, 80, 0.35);
+  --menu-scrollbar-hover: rgba(200, 90, 80, 0.55);
+  --scrollbar: rgba(200, 90, 80, 0.35);
+  --scrollbar-hover: rgba(200, 90, 80, 0.55);
+}
+
+/* Flash donut: the track ring uses --background-subtitle; force enough
+   contrast so the "available" arc stays visible on dark cards */
+.flash-icon > svg .base {
+  stroke: #3d2422 !important;
+}
